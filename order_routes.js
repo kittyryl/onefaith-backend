@@ -21,6 +21,7 @@ router.post("/", async (req, res) => {
     order_type, // This is for Coffee POS
     discount_type, // This is the fix
     items,
+    orderId: external_order_id,
   } = orderDetails;
 
   const client = await db.pool.connect();
@@ -82,6 +83,93 @@ router.post("/", async (req, res) => {
       ];
 
       await client.query(itemInsertQuery, itemValues);
+    }
+
+    // 3. If this is a Carwash order, upsert payment/total/items only (DO NOT change status)
+    if (businessUnit === "Carwash") {
+      // Ensure table exists
+      const createTableSQL = `
+        CREATE TABLE IF NOT EXISTS carwash_services (
+          id SERIAL PRIMARY KEY,
+          order_id TEXT UNIQUE NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          status TEXT NOT NULL DEFAULT 'queue',
+          started_at TIMESTAMPTZ NULL,
+          completed_at TIMESTAMPTZ NULL,
+          vehicle_type TEXT NULL,
+          plate_number TEXT NULL,
+          payment_method TEXT NULL,
+          total NUMERIC(12,2) NOT NULL DEFAULT 0,
+          items JSONB NOT NULL DEFAULT '[]'::jsonb
+        );
+      `;
+      await client.query(createTableSQL);
+
+      // Map items to the carwash service item shape
+      const serviceItems = items.map((it) => ({
+        service_name: it.serviceName || it.name || "",
+        vehicle: (
+          it.vehicle ||
+          (it.item_details && it.item_details.vehicle) ||
+          (it.itemDetails && it.itemDetails.vehicle) ||
+          ""
+        ).toString(),
+        price: Number(it.price) || 0,
+        quantity: Number(it.quantity) || 1,
+      }));
+
+      // Use the same ID provided by the frontend (queue ticket) if available to avoid duplicates
+      const carwashOrderId = external_order_id || `CWS-${orderId}`; // fallback to DB order id
+
+      // Debug: check current status before upsert
+      try {
+        const before = await client.query(
+          "SELECT status, completed_at FROM carwash_services WHERE order_id = $1",
+          [carwashOrderId]
+        );
+        if (before.rowCount) {
+          console.log(
+            `[Carwash][orders] Before upsert for ${carwashOrderId}: status=${before.rows[0].status}, completed_at=${before.rows[0].completed_at}`
+          );
+        } else {
+          console.log(
+            `[Carwash][orders] No existing ticket for ${carwashOrderId}`
+          );
+        }
+      } catch (e) {
+        console.warn("[Carwash][orders] Pre-check failed:", e.message);
+      }
+
+      const upsertSQL = `
+        INSERT INTO carwash_services (order_id, payment_method, total, items)
+        VALUES ($1, $2, $3, $4::jsonb)
+        ON CONFLICT (order_id) DO UPDATE SET
+          payment_method = EXCLUDED.payment_method,
+          total = EXCLUDED.total,
+          items = EXCLUDED.items;
+      `;
+
+      await client.query(upsertSQL, [
+        carwashOrderId,
+        payment,
+        total,
+        JSON.stringify(serviceItems),
+      ]);
+
+      // Debug: check status after upsert
+      try {
+        const after = await client.query(
+          "SELECT status, completed_at FROM carwash_services WHERE order_id = $1",
+          [carwashOrderId]
+        );
+        if (after.rowCount) {
+          console.log(
+            `[Carwash][orders] After upsert for ${carwashOrderId}: status=${after.rows[0].status}, completed_at=${after.rows[0].completed_at}`
+          );
+        }
+      } catch (e) {
+        console.warn("[Carwash][orders] Post-check failed:", e.message);
+      }
     }
 
     await client.query("COMMIT"); // END TRANSACTION (Success!)

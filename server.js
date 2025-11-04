@@ -7,7 +7,9 @@ const db = require("./db");
 const orderRoutes = require("./order_routes");
 const ingredientRoutes = require("./ingredient_routes");
 const productRoutes = require("./product_routes");
-const reportRoutes = require("./report_routes"); // For the sales page
+const reportRoutes = require("./report_routes");
+const uploadRoutes = require("./upload_routes"); // From your Canvas
+const carwashRoutes = require("./carwash_routes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,7 +23,9 @@ app.use(morgan("dev")); // Log all HTTP requests to the console
 app.use("/api/orders", orderRoutes);
 app.use("/api/ingredients", ingredientRoutes);
 app.use("/api/products", productRoutes);
-app.use("/api/reports", reportRoutes); // This route handles the sales data
+app.use("/api/reports", reportRoutes);
+app.use("/api/upload", uploadRoutes); // Use the upload route
+app.use("/api/carwash", carwashRoutes);
 
 // --- DB Connection Check ---
 async function checkDbConnection() {
