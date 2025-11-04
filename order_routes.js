@@ -1,16 +1,11 @@
-// pos-backend/order_routes.js
-
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-// POST route to save a new completed order
+// Save a completed order
 router.post("/", async (req, res) => {
-  // The request body contains the entire order object from the frontend
   const { orderDetails, businessUnit } = req.body;
 
-  // Deconstruct the order for the 'orders' table
-  // We are looking for 'discount_type' from the frontend payload
   const {
     subtotal,
     discount,
@@ -18,8 +13,8 @@ router.post("/", async (req, res) => {
     payment,
     cashTendered,
     changeDue,
-    order_type, // This is for Coffee POS
-    discount_type, // This is the fix
+    order_type,
+    discount_type,
     items,
     orderId: external_order_id,
   } = orderDetails;
@@ -27,9 +22,9 @@ router.post("/", async (req, res) => {
   const client = await db.pool.connect();
 
   try {
-    await client.query("BEGIN"); // START TRANSACTION
+    await client.query("BEGIN");
 
-    // 1. INSERT into the 'orders' table
+    // Insert order
     const orderInsertQuery = `
             INSERT INTO orders (
                 subtotal, discount, total, payment_method, 
@@ -39,7 +34,6 @@ router.post("/", async (req, res) => {
             RETURNING id;
         `;
 
-    // Pass the destructured 'discount_type' into the query values
     const orderValues = [
       subtotal,
       discount,
@@ -47,14 +41,14 @@ router.post("/", async (req, res) => {
       payment,
       cashTendered,
       changeDue,
-      order_type || null, // Use order_type (Dine in/Take out) or null (for Carwash)
-      discount_type || null, // Use the discount_type or null
+      order_type || null,
+      discount_type || null,
     ];
 
     const orderResult = await client.query(orderInsertQuery, orderValues);
     const orderId = orderResult.rows[0].id;
 
-    // 2. INSERT all items into the 'order_items' table
+    // Insert items
     const itemInsertQuery = `
             INSERT INTO order_items (
                 order_id, business_unit, item_type, unit_price, quantity, line_total, item_details
@@ -85,7 +79,7 @@ router.post("/", async (req, res) => {
       await client.query(itemInsertQuery, itemValues);
     }
 
-    // 3. If this is a Carwash order, upsert payment/total/items only (DO NOT change status)
+    // Carwash: upsert ticket payment/total/items without changing status
     if (businessUnit === "Carwash") {
       // Ensure table exists
       const createTableSQL = `
@@ -105,7 +99,7 @@ router.post("/", async (req, res) => {
       `;
       await client.query(createTableSQL);
 
-      // Map items to the carwash service item shape
+      // Map to carwash item shape
       const serviceItems = items.map((it) => ({
         service_name: it.serviceName || it.name || "",
         vehicle: (
@@ -118,10 +112,10 @@ router.post("/", async (req, res) => {
         quantity: Number(it.quantity) || 1,
       }));
 
-      // Use the same ID provided by the frontend (queue ticket) if available to avoid duplicates
-      const carwashOrderId = external_order_id || `CWS-${orderId}`; // fallback to DB order id
+      // Prefer frontend ticket ID; fallback to DB id
+      const carwashOrderId = external_order_id || `CWS-${orderId}`;
 
-      // Debug: check current status before upsert
+      // Debug: pre-check status
       try {
         const before = await client.query(
           "SELECT status, completed_at FROM carwash_services WHERE order_id = $1",
@@ -156,7 +150,7 @@ router.post("/", async (req, res) => {
         JSON.stringify(serviceItems),
       ]);
 
-      // Debug: check status after upsert
+      // Debug: post-check status
       try {
         const after = await client.query(
           "SELECT status, completed_at FROM carwash_services WHERE order_id = $1",
@@ -172,7 +166,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    await client.query("COMMIT"); // END TRANSACTION (Success!)
+    await client.query("COMMIT");
     res.status(201).json({
       message: "Order saved successfully",
       orderId: orderId,

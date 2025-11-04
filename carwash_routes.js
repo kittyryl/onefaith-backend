@@ -1,10 +1,8 @@
-// pos-backend/carwash_routes.js
-
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-// Ensure the carwash_services table exists
+// Ensure table exists
 async function ensureTable() {
   const createTableSQL = `
     CREATE TABLE IF NOT EXISTS carwash_services (
@@ -26,7 +24,7 @@ async function ensureTable() {
     );
   `;
   await db.query(createTableSQL);
-  // Additive migrations for existing tables
+  // Additive migrations
   await db.query(
     "ALTER TABLE carwash_services ADD COLUMN IF NOT EXISTS customer_name TEXT NULL;"
   );
@@ -41,7 +39,7 @@ async function ensureTable() {
   );
 }
 
-// GET /api/carwash/services
+// List services
 router.get("/services", async (req, res) => {
   try {
     await ensureTable();
@@ -51,7 +49,7 @@ router.get("/services", async (req, res) => {
        ORDER BY created_at DESC`
     );
 
-    // Map to frontend-expected shape
+    // Normalize shape
     const rows = result.rows.map((r) => ({
       order_id: r.order_id,
       created_at: r.created_at,
@@ -78,7 +76,7 @@ router.get("/services", async (req, res) => {
   }
 });
 
-// POST /api/carwash/services - create a new service ticket (optional for future use)
+// Upsert service ticket
 router.post("/services", async (req, res) => {
   const {
     order_id,
@@ -131,7 +129,7 @@ router.post("/services", async (req, res) => {
   }
 });
 
-// PUT /api/carwash/services/:id/start - move to in_progress
+// Start service (queue -> in_progress)
 router.put("/services/:id/start", async (req, res) => {
   const orderId = req.params.id;
   try {
@@ -156,7 +154,7 @@ router.put("/services/:id/start", async (req, res) => {
   }
 });
 
-// PUT /api/carwash/services/:id/complete - move to completed
+// Complete service (in_progress -> completed)
 router.put("/services/:id/complete", async (req, res) => {
   const orderId = req.params.id;
   try {
@@ -181,7 +179,7 @@ router.put("/services/:id/complete", async (req, res) => {
   }
 });
 
-// PUT /api/carwash/services/:id/cancel - move to cancelled with optional reason
+// Cancel service (queue/in_progress -> cancelled)
 router.put("/services/:id/cancel", async (req, res) => {
   const orderId = req.params.id;
   const { reason = null } = req.body || {};
@@ -215,7 +213,7 @@ router.put("/services/:id/cancel", async (req, res) => {
   }
 });
 
-// PUT /api/carwash/services/:id/reopen - move cancelled back to queue
+// Reopen cancelled service (cancelled -> queue)
 router.put("/services/:id/reopen", async (req, res) => {
   const orderId = req.params.id;
   try {

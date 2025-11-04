@@ -1,10 +1,8 @@
-// pos-backend/product_routes.js
-
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-// --- 1. GET: Fetch all products (for POS & Inventory list) ---
+// Get products
 router.get("/", async (req, res) => {
   try {
     const query = `
@@ -20,7 +18,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// --- 2. POST: Add a new product (from Inventory page) ---
+// Create product
 router.post("/", async (req, res) => {
   const { name, category, price, needs_temp, image_url } = req.body;
 
@@ -55,7 +53,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// --- 3. PUT: Update an existing product by ID (FIX for 404 Error) ---
+// Update product
 router.put("/:id", async (req, res) => {
   const id = req.params.id; // Get ID from URL parameter
   const { name, category, price, needs_temp, image_url } = req.body;
@@ -101,7 +99,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// --- 4. DELETE: Remove a product by ID (FIX for 404 Error) ---
+// Delete product
 router.delete("/:id", async (req, res) => {
   const id = req.params.id;
 

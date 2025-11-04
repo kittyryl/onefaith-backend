@@ -3,26 +3,25 @@ const router = express.Router();
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 
-// Configure Cloudinary using your .env variables
-// (Make sure CLOUD_NAME, API_KEY, and API_SECRET are in your .env)
+// Cloudinary config (use .env)
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.API_KEY,
   api_secret: process.env.API_SECRET,
 });
 
-// Configure Multer to store the file in memory
+// Multer in-memory storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// This is the route that handles POST requests to /api/upload
+// Upload image
 router.post("/", upload.single("image"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "No image file provided." });
   }
 
   try {
-    // Upload the file buffer to Cloudinary in a folder called 'pos_products'
+    // Upload to Cloudinary folder 'pos_products'
     const uploadResult = await new Promise((resolve, reject) => {
       cloudinary.uploader
         .upload_stream({ folder: "pos_products" }, (error, result) => {

@@ -2,11 +2,9 @@ const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-// --- 1. GET: Sales data grouped by day AND business unit (for Dashboard Chart) ---
+// Sales totals by day per business unit (last 7 days)
 router.get("/sales-by-business-by-day", async (req, res) => {
   try {
-    // This query joins orders and items, filters by the last 7 days,
-    // and groups by date, summing totals for each business unit.
     const query = `
             SELECT 
                 DATE(o.created_at) AS date,
@@ -22,7 +20,6 @@ router.get("/sales-by-business-by-day", async (req, res) => {
         `;
     const result = await db.query(query);
 
-    // Convert string results from DB back to numbers for recharts
     const formattedResult = result.rows.map((row) => ({
       date: row.date,
       coffee_sales: Number(row.coffee_sales) || 0,
@@ -37,39 +34,34 @@ router.get("/sales-by-business-by-day", async (req, res) => {
   }
 });
 
-// --- 2. GET: Fetch all sales transactions with filters (for Sales Report Page) ---
+// Sales transactions with filters (date range, business unit)
 router.get("/summary", async (req, res) => {
-  // Read filters from the query string
   const { startDate, endDate, businessUnit } = req.query;
 
   let queryParams = [];
   let whereClauses = [];
   let paramIndex = 1;
 
-  // --- Build Dynamic WHERE Clause (for dates) ---
   if (startDate) {
     whereClauses.push(`o.created_at >= $${paramIndex++}`);
     queryParams.push(startDate);
   }
 
   if (endDate) {
-    // Add 1 day to the end date to make the filter inclusive
     const nextDay = new Date(endDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
     whereClauses.push(`o.created_at < $${paramIndex++}`);
-    queryParams.push(nextDay.toISOString().split("T")[0]); // Format as 'YYYY-MM-DD'
+    queryParams.push(nextDay.toISOString().split("T")[0]);
   }
 
   const whereString =
     whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
-  // --- Build Dynamic HAVING Clause (for businessUnit) ---
   let havingString = "";
   if (businessUnit && businessUnit !== "all") {
-    // This will be our filter: e.g., HAVING $2 = ANY(array_agg(oi.business_unit))
     havingString = `HAVING $${paramIndex++} = ANY(array_agg(oi.business_unit))`;
-    queryParams.push(businessUnit); // Add the businessUnit to our parameters
+    queryParams.push(businessUnit);
   }
 
   try {

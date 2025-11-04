@@ -1,10 +1,8 @@
-// pos-backend/ingredient_routes.js
-
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-// --- GET: Fetch all ingredients WITH CALCULATED CURRENT STOCK ---
+// Get ingredients with calculated current stock
 router.get("/", async (req, res) => {
   try {
     const query = `
@@ -30,7 +28,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// --- POST: Add a new ingredient ---
+// Create ingredient
 router.post("/", async (req, res) => {
   const { name, category, unit_of_measure, required_stock } = req.body;
 
@@ -63,7 +61,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// --- POST: Record a new stock movement (IN/OUT/AUDIT) ---
+// Record stock movement (IN/OUT/AUDIT)
 router.post("/movement", async (req, res) => {
   const { ingredient_id, quantity, movement_type, notes } = req.body;
 
@@ -94,7 +92,7 @@ router.post("/movement", async (req, res) => {
   }
 });
 
-// --- PUT: Update an existing ingredient by ID ---
+// Update ingredient
 router.put("/:id", async (req, res) => {
   const id = req.params.id;
   const { name, category, unit_of_measure, required_stock } = req.body;
@@ -136,11 +134,11 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// --- DELETE: Remove an ingredient by ID (FIXED) ---
+// Delete ingredient (and related movements)
 router.delete("/:id", async (req, res) => {
   const id = req.params.id;
   try {
-    await db.query("BEGIN"); // Start transaction
+    await db.query("BEGIN");
     await db.query("DELETE FROM stock_movements WHERE ingredient_id = $1", [
       id,
     ]);
@@ -148,7 +146,7 @@ router.delete("/:id", async (req, res) => {
       "DELETE FROM ingredients WHERE id = $1 RETURNING id",
       [id]
     );
-    await db.query("COMMIT"); // Success!
+    await db.query("COMMIT");
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Ingredient not found." });
@@ -157,7 +155,7 @@ router.delete("/:id", async (req, res) => {
       message: "Ingredient and all related movements deleted successfully.",
     });
   } catch (error) {
-    await db.query("ROLLBACK"); // Undo if anything failed
+    await db.query("ROLLBACK");
     console.error("Error deleting ingredient:", error);
     res.status(500).json({ message: "Failed to delete ingredient." });
   }
