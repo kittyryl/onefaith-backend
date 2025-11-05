@@ -7,6 +7,7 @@ erDiagram
   USERS ||--o{ SHIFTS : "user_id"
   INGREDIENTS ||--o{ STOCK_MOVEMENTS : "ingredient_id"
   ORDERS ||--o{ ORDER_ITEMS : "order_id"
+  
   CARWASH_SERVICES {
     int id PK
     text order_id UK
@@ -39,11 +40,21 @@ erDiagram
   SHIFTS {
     int id PK
     int user_id FK
-    timestamp start_time "no TZ"
-    timestamp end_time "no TZ"
+    timestamptz start_time
+    timestamptz end_time
     varchar status "active|ended"
     text notes
-    timestamp created_at "no TZ"
+    timestamptz created_at
+  }
+
+  PRODUCTS {
+    int id PK
+    text name
+    text category
+    numeric price
+    boolean needs_temp
+    text image_url
+    timestamptz created_at
   }
 
   INGREDIENTS {
@@ -52,6 +63,7 @@ erDiagram
     text category
     text unit_of_measure
     numeric required_stock
+    timestamptz created_at
   }
 
   STOCK_MOVEMENTS {
@@ -60,7 +72,7 @@ erDiagram
     numeric quantity
     text movement_type "IN|OUT|AUDIT"
     text notes
-    timestamptz created_at "inferred-TZ"
+    timestamptz created_at
   }
 
   ORDERS {
@@ -73,7 +85,7 @@ erDiagram
     numeric change_due
     text order_type
     text discount_type
-    timestamptz created_at "inferred-TZ"
+    timestamptz created_at
   }
 
   ORDER_ITEMS {
@@ -85,24 +97,65 @@ erDiagram
     int quantity
     numeric line_total
     jsonb item_details
+    timestamptz created_at
   }
 ```
 
 ## Notes and constraints
 
-- users.username has a UNIQUE constraint (DB-level) in addition to API checks.
-- shifts.user_id references users(id) with ON DELETE CASCADE.
-- carwash_services.order_id is UNIQUE; there is no FK to orders because carwash tickets may be created before payment.
-- order_items.item_details and carwash_services.items are JSONB for flexible payloads.
-- Consider adding this index for stronger data integrity:
-  - Unique active shift per user: `CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_shift_per_user ON shifts(user_id) WHERE status = 'active';`
+**Timestamps**: All timestamps use `TIMESTAMPTZ` (timezone-aware) for consistency and to prevent timezone bugs.
+
+**Foreign keys**:
+- `shifts.user_id` → `users(id)` with `ON DELETE CASCADE`
+- `stock_movements.ingredient_id` → `ingredients(id)` with `ON DELETE CASCADE`
+- `order_items.order_id` → `orders(id)` with `ON DELETE CASCADE`
+
+**Unique constraints**:
+- `users.username` - database-level unique index
+- `carwash_services.order_id` - unique text identifier
+- `shifts(user_id) WHERE status='active'` - partial unique index ensures only one active shift per user
+
+**Check constraints**:
+- `users.role` IN ('manager', 'staff')
+- `shifts.status` IN ('active', 'ended')
+- `stock_movements.movement_type` IN ('IN', 'OUT', 'AUDIT')
+- `order_items.business_unit` IN ('Coffee', 'Carwash')
+
+**Indexes for performance**:
+- `idx_shifts_user_id`, `idx_shifts_status`
+- `idx_stock_movements_ingredient_id`, `idx_stock_movements_created_at`
+- `idx_orders_created_at`, `idx_orders_payment_method`
+- `idx_order_items_order_id`, `idx_order_items_business_unit`
+- `idx_products_category`, `idx_ingredients_category`
+- `idx_carwash_services_status` (partial: WHERE status != 'completed')
+
+**JSONB fields**:
+- `order_items.item_details` - flexible payload for Coffee (option) and Carwash (vehicle) details
+- `carwash_services.items` - array of service line items
+
+## Migration
+
+To standardize your existing database to this schema, run:
+
+```bash
+node migrate_standardize_schema.js
+```
+
+This will:
+1. Convert shifts table timestamps from `TIMESTAMP` to `TIMESTAMPTZ`
+2. Create any missing table definitions
+3. Add all recommended indexes and constraints
+4. Ensure data integrity across all tables
 
 ## Source of truth
 
-- Defined from the code in:
-  - `backend/create_users_table.js`
-  - `backend/create_shifts_table.js`
-  - `backend/ingredient_routes.js` (implied schema for ingredients and stock_movements)
-  - `backend/product_routes.js` (products table is independent and not referenced by orders)
-  - `backend/order_routes.js` (orders and order_items)
-  - `backend/carwash_routes.js` (carwash_services)
+All tables are explicitly defined in:
+- `backend/create_users_table.js` - users table
+- `backend/create_shifts_table.js` - shifts table (now with TIMESTAMPTZ)
+- `backend/migrate_standardize_schema.js` - complete schema with all tables, indexes, and constraints
+
+Table creation is also handled by:
+- `backend/carwash_routes.js` - carwash_services table with auto-migrations
+- `backend/order_routes.js` - orders/order_items created inline during first order
+
+**Recommended**: Run the migration script on your production database to ensure consistency.
