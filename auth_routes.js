@@ -4,7 +4,8 @@ const db = require("./db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const JWT_SECRET =
+  process.env.JWT_SECRET || "your-secret-key-change-in-production";
 const JWT_EXPIRES_IN = "24h";
 
 // Login
@@ -16,7 +17,8 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    const query = "SELECT * FROM users WHERE username = $1 AND is_active = true";
+    const query =
+      "SELECT * FROM users WHERE username = $1 AND is_active = true";
     const result = await db.query(query, [username]);
 
     if (result.rowCount === 0) {
@@ -68,9 +70,10 @@ router.get("/verify", async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    
+
     // Check if user still exists and is active
-    const query = "SELECT id, username, full_name, role FROM users WHERE id = $1 AND is_active = true";
+    const query =
+      "SELECT id, username, full_name, role FROM users WHERE id = $1 AND is_active = true";
     const result = await db.query(query, [decoded.userId]);
 
     if (result.rowCount === 0) {
@@ -127,7 +130,12 @@ router.post("/users", async (req, res) => {
       VALUES ($1, $2, $3, $4)
       RETURNING id, username, full_name, role, is_active, created_at
     `;
-    const result = await db.query(query, [username, passwordHash, fullName, role]);
+    const result = await db.query(query, [
+      username,
+      passwordHash,
+      fullName,
+      role,
+    ]);
     res.status(201).json({
       message: "User created successfully",
       user: result.rows[0],
