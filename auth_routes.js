@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require("./db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { authenticateToken, requireManager } = require("./auth_middleware");
 
 const JWT_SECRET =
   process.env.JWT_SECRET || "your-secret-key-change-in-production";
@@ -96,7 +97,8 @@ router.get("/verify", async (req, res) => {
 });
 
 // Get all users (manager only)
-router.get("/users", async (req, res) => {
+// Manager-only: list users
+router.get("/users", authenticateToken, requireManager, async (req, res) => {
   try {
     const query = `
       SELECT id, username, full_name, role, is_active, created_at
@@ -112,7 +114,8 @@ router.get("/users", async (req, res) => {
 });
 
 // Create user (manager only)
-router.post("/users", async (req, res) => {
+// Manager-only: create user
+router.post("/users", authenticateToken, requireManager, async (req, res) => {
   const { username, password, fullName, role } = req.body;
 
   if (!username || !password || !fullName || !role) {
@@ -151,7 +154,8 @@ router.post("/users", async (req, res) => {
 });
 
 // Update user (manager only)
-router.put("/users/:id", async (req, res) => {
+// Manager-only: update user
+router.put("/users/:id", authenticateToken, requireManager, async (req, res) => {
   const { id } = req.params;
   const { fullName, role, isActive, password } = req.body;
 
@@ -195,7 +199,8 @@ router.put("/users/:id", async (req, res) => {
 });
 
 // Delete user (manager only)
-router.delete("/users/:id", async (req, res) => {
+// Manager-only: delete user
+router.delete("/users/:id", authenticateToken, requireManager, async (req, res) => {
   const { id } = req.params;
 
   try {
