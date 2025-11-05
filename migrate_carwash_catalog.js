@@ -1,13 +1,13 @@
 /**
  * migrate_carwash_catalog.js
- * 
+ *
  * Creates carwash service catalog tables and seeds with existing data.
  * This replaces the hardcoded services in the frontend with database-driven catalog.
- * 
+ *
  * Tables:
  * - carwash_services_catalog: Service definitions (name, category, description)
  * - carwash_service_prices: Vehicle type and price combinations for each service
- * 
+ *
  * Run: node migrate_carwash_catalog.js
  */
 
@@ -83,99 +83,114 @@ async function migrateCarwashCatalog() {
 
     const services = [
       {
-        name: "Detailed Wash",
+        name: "Vacuum",
         category: "Basic",
-        description: "Exterior wash/dry, tire/wheel cleaning, interior cleaning, vacuum, armor all.",
+        description: "Interior vacuum cleaning service.",
         display_order: 1,
         prices: [
-          { vehicle: "Bike", price: 100 },
-          { vehicle: "Big Bike", price: 150 },
-          { vehicle: "Sedan", price: 200 },
+          { vehicle: "Sedan", price: 55 },
+          { vehicle: "CSUV", price: 75 },
+          { vehicle: "SUV", price: 75 },
+          { vehicle: "VAN", price: 95 },
+          { vehicle: "FB TRUCK", price: 95 },
+        ],
+      },
+      {
+        name: "Detailed Wash",
+        category: "Basic",
+        description:
+          "Exterior wash/dry, tire/wheel cleaning, interior cleaning, vacuum, armor all.",
+        display_order: 2,
+        prices: [
+          { vehicle: "BIKE", price: 100 },
+          { vehicle: "BIG BIKE", price: 150 },
+          { vehicle: "SEDAN", price: 200 },
           { vehicle: "CSUV", price: 250 },
           { vehicle: "SUV", price: 300 },
-          { vehicle: "Van Pickup", price: 350 },
-          { vehicle: "FB Van Grandia", price: 400 },
+          { vehicle: "VAN", price: 350 },
+          { vehicle: "FB TRUCK", price: 400 },
+        ],
+      },
+      {
+        name: "Ceramic Coating",
+        category: "Advanced",
+        description:
+          "Ultimate luxury treatment, paint sealant, glass cleaning, deluxe detailing.",
+        display_order: 3,
+        prices: [
+          { vehicle: "BIKE/BIG BIKE", price: 3000 },
+          { vehicle: "SEDAN", price: 12000 },
+          { vehicle: "CSUV", price: 15000 },
+          { vehicle: "SUV", price: 18000 },
+          { vehicle: "VAN", price: 21000 },
+          { vehicle: "FB TRUCK", price: 24000 },
         ],
       },
       {
         name: "Detailed Wash & Wax",
         category: "Most Popular",
         description: "All Detailed Wash features + professional hand waxing.",
-        display_order: 2,
+        display_order: 4,
         prices: [
-          { vehicle: "Bike", price: 250 },
-          { vehicle: "Big Bike", price: 300 },
-          { vehicle: "Sedan", price: 500 },
+          { vehicle: "BIKE", price: 250 },
+          { vehicle: "BIG BIKE", price: 300 },
+          { vehicle: "SEDAN", price: 500 },
           { vehicle: "CSUV", price: 600 },
           { vehicle: "SUV", price: 700 },
-          { vehicle: "Van Pickup", price: 900 },
-          { vehicle: "Truck", price: 950 },
-        ],
-      },
-      {
-        name: "Ceramic Coating",
-        category: "Advanced",
-        description: "Ultimate luxury treatment, paint sealant, glass cleaning, deluxe detailing.",
-        display_order: 3,
-        prices: [
-          { vehicle: "Bikes", price: 3000 },
-          { vehicle: "Small", price: 12000 },
-          { vehicle: "Medium", price: 15000 },
-          { vehicle: "Large", price: 18000 },
-          { vehicle: "XLarge", price: 21000 },
-          { vehicle: "XXLarge", price: 24000 },
+          { vehicle: "VAN", price: 900 },
+          { vehicle: "FB TRUCK", price: 950 },
         ],
       },
       {
         name: "Bac-2-Zero",
         category: "Others",
         description: "Interior sanitation service.",
-        display_order: 4,
+        display_order: 5,
         prices: [
-          { vehicle: "S", price: 500 },
-          { vehicle: "M", price: 550 },
-          { vehicle: "L", price: 600 },
-          { vehicle: "XL", price: 650 },
-          { vehicle: "XXL", price: 700 },
+          { vehicle: "SEDAN", price: 500 },
+          { vehicle: "CSUV", price: 550 },
+          { vehicle: "SUV", price: 600 },
+          { vehicle: "VAN", price: 650 },
+          { vehicle: "FB TRUCK", price: 700 },
         ],
       },
       {
         name: "Buffing Wax",
         category: "Others",
         description: "Machine buffing for paint correction.",
-        display_order: 5,
+        display_order: 6,
         prices: [
-          { vehicle: "S", price: 600 },
-          { vehicle: "M", price: 700 },
-          { vehicle: "L", price: 800 },
-          { vehicle: "XL", price: 900 },
-          { vehicle: "XXL", price: 1000 },
+          { vehicle: "SEDAN", price: 600 },
+          { vehicle: "CSUV", price: 700 },
+          { vehicle: "SUV", price: 800 },
+          { vehicle: "VAN", price: 900 },
+          { vehicle: "FB TRUCK", price: 1000 },
         ],
       },
       {
         name: "Glass Cleaning",
         category: "Others",
         description: "Full exterior/interior glass detailing.",
-        display_order: 6,
+        display_order: 7,
         prices: [
-          { vehicle: "S", price: 1250 },
-          { vehicle: "M", price: 1400 },
-          { vehicle: "L", price: 1700 },
-          { vehicle: "XL", price: 1800 },
-          { vehicle: "XXL", price: 1950 },
+          { vehicle: "SEDAN", price: 1250 },
+          { vehicle: "CSUV", price: 1400 },
+          { vehicle: "SUV", price: 1550 },
+          { vehicle: "VAN", price: 1700 },
+          { vehicle: "FB TRUCK", price: 1950 },
         ],
       },
       {
         name: "Hand Wax",
         category: "Others",
         description: "Protective hand waxing service.",
-        display_order: 7,
+        display_order: 8,
         prices: [
-          { vehicle: "S", price: 400 },
-          { vehicle: "M", price: 500 },
-          { vehicle: "L", price: 600 },
-          { vehicle: "XL", price: 700 },
-          { vehicle: "XXL", price: 800 },
+          { vehicle: "SEDAN", price: 400 },
+          { vehicle: "CSUV", price: 500 },
+          { vehicle: "SUV", price: 600 },
+          { vehicle: "VAN", price: 700 },
+          { vehicle: "FB TRUCK", price: 800 },
         ],
       },
     ];
@@ -187,7 +202,12 @@ async function migrateCarwashCatalog() {
         (name, category, description, display_order) 
         VALUES ($1, $2, $3, $4) 
         RETURNING id`,
-        [service.name, service.category, service.description, service.display_order]
+        [
+          service.name,
+          service.category,
+          service.description,
+          service.display_order,
+        ]
       );
 
       const serviceId = rows[0].id;
@@ -202,15 +222,18 @@ async function migrateCarwashCatalog() {
         );
       }
 
-      console.log(`✅ Seeded: ${service.name} with ${service.prices.length} prices`);
+      console.log(
+        `✅ Seeded: ${service.name} with ${service.prices.length} prices`
+      );
     }
 
     console.log("\n✅ Migration completed successfully!");
     console.log(`\nSummary:`);
-    console.log(`- Created 2 tables: carwash_services_catalog, carwash_service_prices`);
+    console.log(
+      `- Created 2 tables: carwash_services_catalog, carwash_service_prices`
+    );
     console.log(`- Created 3 indexes for performance`);
     console.log(`- Seeded ${services.length} services with pricing data`);
-
   } catch (error) {
     console.error("❌ Migration failed:", error);
     throw error;
