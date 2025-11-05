@@ -1,9 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("./db");
+const { authenticateToken, requireManager } = require("./auth_middleware");
 
 // Setup endpoint to create shifts table
-router.post("/create-shifts-table", async (req, res) => {
+// Extra guard: refuse if not explicitly enabled via env
+router.post(
+  "/create-shifts-table",
+  authenticateToken,
+  requireManager,
+  async (req, res) => {
+    if (process.env.ENABLE_SETUP !== "true") {
+      return res.status(403).json({
+        success: false,
+        error: "Setup endpoints are disabled",
+      });
+    }
   try {
     // Check if table already exists
     const checkTable = await pool.query(`
@@ -47,6 +59,7 @@ router.post("/create-shifts-table", async (req, res) => {
       error: error.message,
     });
   }
-});
+  }
+);
 
 module.exports = router;

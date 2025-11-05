@@ -25,7 +25,10 @@ app.use(morgan("dev"));
 
 // API routes
 app.use("/api/auth", authRoutes);
-app.use("/api/setup", setupRoutes);
+// Gate setup routes behind env flag for safety
+if (process.env.ENABLE_SETUP === "true") {
+  app.use("/api/setup", setupRoutes);
+}
 app.use("/api/shifts", shiftRoutes);
 app.use("/api/orders", authenticateToken, orderRoutes);
 app.use("/api/ingredients", authenticateToken, ingredientRoutes);
