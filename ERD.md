@@ -7,6 +7,7 @@ erDiagram
   USERS ||--o{ SHIFTS : "user_id"
   INGREDIENTS ||--o{ STOCK_MOVEMENTS : "ingredient_id"
   ORDERS ||--o{ ORDER_ITEMS : "order_id"
+  CARWASH_SERVICES_CATALOG ||--o{ CARWASH_SERVICE_PRICES : "service_id"
   
   CARWASH_SERVICES {
     int id PK
@@ -24,6 +25,27 @@ erDiagram
     text payment_method
     numeric total
     jsonb items
+  }
+
+  CARWASH_SERVICES_CATALOG {
+    int id PK
+    varchar name
+    varchar category
+    text description
+    boolean is_active
+    int display_order
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  CARWASH_SERVICE_PRICES {
+    int id PK
+    int service_id FK
+    varchar vehicle_type
+    numeric price
+    boolean is_active
+    timestamptz created_at
+    timestamptz updated_at
   }
 
   USERS {
@@ -109,10 +131,12 @@ erDiagram
 - `shifts.user_id` → `users(id)` with `ON DELETE CASCADE`
 - `stock_movements.ingredient_id` → `ingredients(id)` with `ON DELETE CASCADE`
 - `order_items.order_id` → `orders(id)` with `ON DELETE CASCADE`
+- `carwash_service_prices.service_id` → `carwash_services_catalog(id)` with `ON DELETE CASCADE`
 
 **Unique constraints**:
 - `users.username` - database-level unique index
 - `carwash_services.order_id` - unique text identifier
+- `carwash_service_prices(service_id, vehicle_type)` - prevents duplicate vehicle prices per service
 - `shifts(user_id) WHERE status='active'` - partial unique index ensures only one active shift per user
 
 **Check constraints**:
@@ -128,6 +152,7 @@ erDiagram
 - `idx_order_items_order_id`, `idx_order_items_business_unit`
 - `idx_products_category`, `idx_ingredients_category`
 - `idx_carwash_services_status` (partial: WHERE status != 'completed')
+- `idx_carwash_catalog_active`, `idx_carwash_prices_service`, `idx_carwash_prices_active`
 
 **JSONB fields**:
 - `order_items.item_details` - flexible payload for Coffee (option) and Carwash (vehicle) details
@@ -138,6 +163,12 @@ erDiagram
 To standardize your existing database to this schema, run:
 
 ```bash
+# Standard schema migration (timestamps, table definitions, constraints)
+node migrate_standardize_schema.js
+
+# Carwash services catalog migration (new feature)
+node migrate_carwash_catalog.js
+```
 node migrate_standardize_schema.js
 ```
 
