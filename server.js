@@ -11,6 +11,7 @@ const productRoutes = require("./product_routes");
 const reportRoutes = require("./report_routes");
 const uploadRoutes = require("./upload_routes");
 const carwashRoutes = require("./carwash_routes");
+const shiftRoutes = require("./shift_routes");
 const { authenticateToken, requireManager } = require("./auth_middleware");
 
 const app = express();
@@ -23,6 +24,7 @@ app.use(morgan("dev"));
 
 // API routes
 app.use("/api/auth", authRoutes);
+app.use("/api/shifts", shiftRoutes);
 app.use("/api/orders", authenticateToken, orderRoutes);
 app.use("/api/ingredients", authenticateToken, ingredientRoutes);
 app.use("/api/products", authenticateToken, productRoutes);
