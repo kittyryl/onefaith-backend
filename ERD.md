@@ -39,11 +39,11 @@ erDiagram
   SHIFTS {
     int id PK
     int user_id FK
-    timestamp start_time
-    timestamp end_time
+    timestamp start_time "no TZ"
+    timestamp end_time "no TZ"
     varchar status "active|ended"
     text notes
-    timestamp created_at
+    timestamp created_at "no TZ"
   }
 
   INGREDIENTS {
@@ -60,7 +60,7 @@ erDiagram
     numeric quantity
     text movement_type "IN|OUT|AUDIT"
     text notes
-    timestamptz created_at
+    timestamptz created_at "inferred-TZ"
   }
 
   ORDERS {
@@ -73,7 +73,7 @@ erDiagram
     numeric change_due
     text order_type
     text discount_type
-    timestamptz created_at
+    timestamptz created_at "inferred-TZ"
   }
 
   ORDER_ITEMS {
