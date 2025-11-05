@@ -2,7 +2,7 @@ const db = require("./db");
 
 /**
  * Migration: Standardize all timestamps to TIMESTAMPTZ
- * 
+ *
  * This migration:
  * 1. Converts shifts table TIMESTAMP columns to TIMESTAMPTZ
  * 2. Creates missing table definitions for core tables
@@ -112,7 +112,7 @@ async function runMigration() {
 
     // 7. Add recommended indexes for data integrity
     console.log("\n7. Adding data integrity indexes...");
-    
+
     // Unique username constraint (if not already exists)
     await db.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique 
@@ -142,7 +142,7 @@ async function runMigration() {
     console.log("- Created missing table definitions");
     console.log("- Added data integrity constraints");
     console.log("- Added performance indexes");
-    
+
     process.exit(0);
   } catch (err) {
     console.error("\n❌ Migration failed:", err.message);

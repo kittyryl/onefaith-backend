@@ -16,24 +16,24 @@ router.post(
         error: "Setup endpoints are disabled",
       });
     }
-  try {
-    // Check if table already exists
-    const checkTable = await pool.query(`
+    try {
+      // Check if table already exists
+      const checkTable = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_name = 'shifts'
       );
     `);
 
-    if (checkTable.rows[0].exists) {
-      return res.json({
-        success: true,
-        message: "Shifts table already exists",
-      });
-    }
+      if (checkTable.rows[0].exists) {
+        return res.json({
+          success: true,
+          message: "Shifts table already exists",
+        });
+      }
 
-    // Create shifts table
-    await pool.query(`
+      // Create shifts table
+      await pool.query(`
       CREATE TABLE shifts (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
@@ -49,17 +49,17 @@ router.post(
       CREATE UNIQUE INDEX idx_shifts_active_per_user ON shifts(user_id) WHERE status = 'active';
     `);
 
-    res.json({
-      success: true,
-      message: "✅ Shifts table created successfully!",
-    });
-  } catch (error) {
-    console.error("Error creating shifts table:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
+      res.json({
+        success: true,
+        message: "✅ Shifts table created successfully!",
+      });
+    } catch (error) {
+      console.error("Error creating shifts table:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
   }
 );
 

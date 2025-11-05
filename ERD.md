@@ -8,7 +8,7 @@ erDiagram
   INGREDIENTS ||--o{ STOCK_MOVEMENTS : "ingredient_id"
   ORDERS ||--o{ ORDER_ITEMS : "order_id"
   CARWASH_SERVICES_CATALOG ||--o{ CARWASH_SERVICE_PRICES : "service_id"
-  
+
   CARWASH_SERVICES {
     int id PK
     text order_id UK
@@ -128,24 +128,28 @@ erDiagram
 **Timestamps**: All timestamps use `TIMESTAMPTZ` (timezone-aware) for consistency and to prevent timezone bugs.
 
 **Foreign keys**:
+
 - `shifts.user_id` → `users(id)` with `ON DELETE CASCADE`
 - `stock_movements.ingredient_id` → `ingredients(id)` with `ON DELETE CASCADE`
 - `order_items.order_id` → `orders(id)` with `ON DELETE CASCADE`
 - `carwash_service_prices.service_id` → `carwash_services_catalog(id)` with `ON DELETE CASCADE`
 
 **Unique constraints**:
+
 - `users.username` - database-level unique index
 - `carwash_services.order_id` - unique text identifier
 - `carwash_service_prices(service_id, vehicle_type)` - prevents duplicate vehicle prices per service
 - `shifts(user_id) WHERE status='active'` - partial unique index ensures only one active shift per user
 
 **Check constraints**:
+
 - `users.role` IN ('manager', 'staff')
 - `shifts.status` IN ('active', 'ended')
 - `stock_movements.movement_type` IN ('IN', 'OUT', 'AUDIT')
 - `order_items.business_unit` IN ('Coffee', 'Carwash')
 
 **Indexes for performance**:
+
 - `idx_shifts_user_id`, `idx_shifts_status`
 - `idx_stock_movements_ingredient_id`, `idx_stock_movements_created_at`
 - `idx_orders_created_at`, `idx_orders_payment_method`
@@ -155,6 +159,7 @@ erDiagram
 - `idx_carwash_catalog_active`, `idx_carwash_prices_service`, `idx_carwash_prices_active`
 
 **JSONB fields**:
+
 - `order_items.item_details` - flexible payload for Coffee (option) and Carwash (vehicle) details
 - `carwash_services.items` - array of service line items
 
@@ -169,7 +174,9 @@ node migrate_standardize_schema.js
 # Carwash services catalog migration (new feature)
 node migrate_carwash_catalog.js
 ```
+
 node migrate_standardize_schema.js
+
 ```
 
 This will:
@@ -190,3 +197,4 @@ Table creation is also handled by:
 - `backend/order_routes.js` - orders/order_items created inline during first order
 
 **Recommended**: Run the migration script on your production database to ensure consistency.
+```
