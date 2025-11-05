@@ -17,7 +17,7 @@ router.get("/current", authenticateToken, async (req, res) => {
     const result = await db.query(query, [req.user.userId]);
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ message: "No active shift" });
+      return res.json(null);
     }
 
     res.json(result.rows[0]);
