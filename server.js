@@ -4,12 +4,14 @@ const morgan = require("morgan");
 const db = require("./db");
 
 // Routers
+const authRoutes = require("./auth_routes");
 const orderRoutes = require("./order_routes");
 const ingredientRoutes = require("./ingredient_routes");
 const productRoutes = require("./product_routes");
 const reportRoutes = require("./report_routes");
-const uploadRoutes = require("./upload_routes"); // From your Canvas
+const uploadRoutes = require("./upload_routes");
 const carwashRoutes = require("./carwash_routes");
+const { authenticateToken, requireManager } = require("./auth_middleware");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -20,12 +22,13 @@ app.use(express.json());
 app.use(morgan("dev"));
 
 // API routes
-app.use("/api/orders", orderRoutes);
-app.use("/api/ingredients", ingredientRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/reports", reportRoutes);
-app.use("/api/upload", uploadRoutes); // Use the upload route
-app.use("/api/carwash", carwashRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/orders", authenticateToken, orderRoutes);
+app.use("/api/ingredients", authenticateToken, ingredientRoutes);
+app.use("/api/products", authenticateToken, productRoutes);
+app.use("/api/reports", authenticateToken, reportRoutes);
+app.use("/api/upload", authenticateToken, uploadRoutes);
+app.use("/api/carwash", authenticateToken, carwashRoutes);
 
 // DB health log
 async function checkDbConnection() {
