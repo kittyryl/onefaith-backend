@@ -17,10 +17,10 @@ router.get("/current", authenticateToken, async (req, res) => {
     const result = await db.query(query, [req.user.userId]);
 
     if (result.rowCount === 0) {
-      return res.json({ shift: null });
+      return res.status(404).json({ message: "No active shift" });
     }
 
-    res.json({ shift: result.rows[0] });
+    res.json(result.rows[0]);
   } catch (error) {
     console.error("Error fetching current shift:", error);
     res.status(500).json({ message: "Failed to fetch current shift" });

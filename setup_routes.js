@@ -14,9 +14,9 @@ router.post("/create-shifts-table", async (req, res) => {
     `);
 
     if (checkTable.rows[0].exists) {
-      return res.json({ 
-        success: true, 
-        message: "Shifts table already exists" 
+      return res.json({
+        success: true,
+        message: "Shifts table already exists",
       });
     }
 
@@ -36,15 +36,15 @@ router.post("/create-shifts-table", async (req, res) => {
       CREATE INDEX idx_shifts_status ON shifts(status);
     `);
 
-    res.json({ 
-      success: true, 
-      message: "✅ Shifts table created successfully!" 
+    res.json({
+      success: true,
+      message: "✅ Shifts table created successfully!",
     });
   } catch (error) {
     console.error("Error creating shifts table:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 });
