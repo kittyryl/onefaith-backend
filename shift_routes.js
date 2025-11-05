@@ -15,7 +15,7 @@ router.get("/current", authenticateToken, async (req, res) => {
       LIMIT 1
     `;
     const result = await db.query(query, [req.user.userId]);
-    
+
     if (result.rowCount === 0) {
       return res.json({ shift: null });
     }
@@ -38,7 +38,9 @@ router.post("/start", authenticateToken, async (req, res) => {
     const existingShift = await db.query(checkQuery, [req.user.userId]);
 
     if (existingShift.rowCount > 0) {
-      return res.status(400).json({ message: "You already have an active shift" });
+      return res
+        .status(400)
+        .json({ message: "You already have an active shift" });
     }
 
     // Create new shift
