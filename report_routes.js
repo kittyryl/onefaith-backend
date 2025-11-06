@@ -99,4 +99,82 @@ router.get("/summary", async (req, res) => {
   }
 });
 
+// ===== CARWASH ANALYTICS ENDPOINTS =====
+
+// Popular carwash services (completed only)
+router.get("/carwash/popular-services", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        cat.name AS service_name,
+        cat.category,
+        COUNT(*) AS times_ordered,
+        SUM(li.quantity) AS total_quantity,
+        SUM(li.line_total) AS total_revenue,
+        AVG(li.unit_price) AS avg_price
+      FROM carwash_service_line_items li
+      JOIN carwash_services cs ON li.service_ticket_id = cs.id
+      JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+      WHERE cs.status != 'cancelled'
+      GROUP BY cat.id, cat.name, cat.category
+      ORDER BY times_ordered DESC
+      LIMIT 10;
+    `;
+    const result = await db.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("[Reports] Popular services error:", err);
+    res.status(500).json({ message: "Failed to fetch popular services" });
+  }
+});
+
+// Cancellation analysis
+router.get("/carwash/cancellations", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        cat.name AS service_name,
+        COUNT(*) AS times_cancelled,
+        SUM(li.line_total) AS revenue_lost,
+        STRING_AGG(DISTINCT cs.cancel_reason, ', ') AS common_reasons
+      FROM carwash_service_line_items li
+      JOIN carwash_services cs ON li.service_ticket_id = cs.id
+      JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+      WHERE cs.status = 'cancelled'
+      GROUP BY cat.name
+      ORDER BY times_cancelled DESC;
+    `;
+    const result = await db.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("[Reports] Cancellations error:", err);
+    res.status(500).json({ message: "Failed to fetch cancellation stats" });
+  }
+});
+
+// Services by vehicle type
+router.get("/carwash/services-by-vehicle", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        li.vehicle_type,
+        cat.name AS service_name,
+        COUNT(*) AS times_ordered,
+        SUM(li.line_total) AS revenue
+      FROM carwash_service_line_items li
+      JOIN carwash_services cs ON li.service_ticket_id = cs.id
+      JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+      WHERE li.vehicle_type IS NOT NULL
+        AND cs.status != 'cancelled'
+      GROUP BY li.vehicle_type, cat.name
+      ORDER BY li.vehicle_type, times_ordered DESC;
+    `;
+    const result = await db.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("[Reports] Services by vehicle error:", err);
+    res.status(500).json({ message: "Failed to fetch services by vehicle" });
+  }
+});
+
 module.exports = router;
