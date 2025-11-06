@@ -1,6 +1,6 @@
 # Proposed Connected ERD (Enhanced Linking)
 
-This is an optional, more connected design that links sales, inventory, users, and carwash records end‑to‑end. It keeps historical prices safe while enabling richer reporting and (optionally) automatic inventory deduction.
+This is an optional, more connected design that links sales, inventory, users, and carwash records end‑to‑end. It keeps historical prices safe while enabling richer reporting. Note: automatic inventory deduction is NOT included; inventory remains manual via stock movements.
 
 ```mermaid
 erDiagram
@@ -10,9 +10,6 @@ erDiagram
 
   ORDERS ||--o{ ORDER_ITEMS : "order_id"
   PRODUCTS ||--o{ ORDER_ITEMS : "product_id (nullable)"
-
-  PRODUCTS ||--o{ PRODUCT_INGREDIENTS : "product_id"
-  INGREDIENTS ||--o{ PRODUCT_INGREDIENTS : "ingredient_id"
 
   INGREDIENTS ||--o{ STOCK_MOVEMENTS : "ingredient_id"
   USERS ||--o{ STOCK_MOVEMENTS : "user_id"
@@ -48,14 +45,6 @@ erDiagram
     numeric price
     boolean needs_temp
     text image_url
-    timestamptz created_at
-  }
-
-  PRODUCT_INGREDIENTS {
-    int id PK
-    int product_id FK
-    int ingredient_id FK
-    numeric qty_per_unit
     timestamptz created_at
   }
 
@@ -153,10 +142,8 @@ erDiagram
   - Join order items to products for analytics while preserving price snapshots (unit_price stays on order_items).
   - Link carwash service jobs to orders after payment, keeping operational timelines separate.
 
-- Inventory automation (optional)
-  - Define recipes/BOM via PRODUCT_INGREDIENTS.
-  - On sale (ORDER_ITEMS insert), deduct OUT movements = qty_per_unit × item quantity.
-  - Keep manual IN/OUT/AUDIT for corrections and deliveries.
+- Manual inventory control
+  - Inventory adjustments are recorded via IN/OUT/AUDIT stock movements only (no automatic deduction from sales).
 
 - Cleaner auditing
   - STOCK_MOVEMENTS have user_id for who performed the action.
@@ -169,7 +156,6 @@ erDiagram
   - orders.shift_id → shifts(id), index on orders(shift_id)
   - order_items.product_id → products(id) (NULL allowed), index on order_items(product_id)
   - carwash_services.order_id → orders(id) (NULL allowed), index on carwash_services(order_id)
-  - product_ingredients.product_id → products(id) and ingredient_id → ingredients(id), composite unique (product_id, ingredient_id)
   - stock_movements.user_id → users(id), index on stock_movements(user_id)
   - DB-level uniqueness for ingredients: unique index on LOWER(name)
 
@@ -185,15 +171,15 @@ erDiagram
 - order_items.product_id (nullable)
 - carwash_services.order_id (nullable)
 - stock_movements.user_id (nullable)
-- product_ingredients table (with FKs)
 
 2) Add FKs as NOT VALID, then VALIDATE to avoid long locks.
 3) Backfill values where known (e.g., current active shift to orders).
 4) Update app to write new columns.
-5) Optional: implement inventory deduction on order create; keep manual adjustments as a fallback.
+5) Keep inventory adjustments manual via stock movements.
 
 ## Notes
 
 - History safety: even with product_id, keep unit_price and item_type on order_items to preserve the exact sale value at the time of purchase.
 - Optional links: carwash_services.order_id and order_items.product_id can remain NULL for legacy data or workflows where linkage isn’t applicable.
 - Soft deletes: prefer deactivating products/services instead of hard deletes to keep FK integrity for historical orders.
+- No automatic inventory: sales do not impact ingredient stock automatically; continue to use IN/OUT/AUDIT entries.
