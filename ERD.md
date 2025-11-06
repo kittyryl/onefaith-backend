@@ -8,13 +8,15 @@ erDiagram
   USERS ||--o{ ORDERS : "user_id"
   USERS ||--o{ STOCK_MOVEMENTS : "user_id"
   SHIFTS ||--o{ ORDERS : "shift_id"
-  
+
   ORDERS ||--o{ ORDER_ITEMS : "order_id"
   PRODUCTS ||--o{ ORDER_ITEMS : "product_id (nullable)"
-  
+
   INGREDIENTS ||--o{ STOCK_MOVEMENTS : "ingredient_id"
-  
+
   CARWASH_SERVICES_CATALOG ||--o{ CARWASH_SERVICE_PRICES : "service_id"
+  CARWASH_SERVICES_CATALOG ||--o{ CARWASH_SERVICE_LINE_ITEMS : "catalog_service_id (nullable)"
+  CARWASH_SERVICES ||--o{ CARWASH_SERVICE_LINE_ITEMS : "service_ticket_id"
   ORDERS ||--o{ CARWASH_SERVICES : "order_id_fk (nullable)"
 
   CARWASH_SERVICES {
@@ -34,6 +36,17 @@ erDiagram
     text payment_method
     numeric total
     jsonb items
+  }
+
+  CARWASH_SERVICE_LINE_ITEMS {
+    int id PK
+    int service_ticket_id FK
+    int catalog_service_id FK "nullable"
+    varchar vehicle_type
+    numeric unit_price
+    int quantity
+    numeric line_total
+    timestamptz created_at
   }
 
   CARWASH_SERVICES_CATALOG {
@@ -150,6 +163,8 @@ erDiagram
 - `stock_movements.ingredient_id` → `ingredients(id)` with `ON DELETE CASCADE`
 - `stock_movements.user_id` → `users(id)` - tracks who performed inventory adjustments
 - `carwash_services.order_id_fk` → `orders(id)` - nullable, links carwash jobs to payment records
+- `carwash_service_line_items.service_ticket_id` → `carwash_services(id)` with `ON DELETE CASCADE` - links line items to service tickets
+- `carwash_service_line_items.catalog_service_id` → `carwash_services_catalog(id)` with `ON DELETE SET NULL` - nullable, links to catalog for analytics
 - `carwash_service_prices.service_id` → `carwash_services_catalog(id)` with `ON DELETE CASCADE`
 
 **Unique constraints**:
@@ -176,6 +191,7 @@ erDiagram
 - `idx_stock_movements_ingredient_id`, `idx_stock_movements_user_id`, `idx_stock_movements_created_at`
 - `idx_products_category`, `idx_ingredients_category`
 - `idx_carwash_services_order_id_fk`, `idx_carwash_services_status` (partial: WHERE status != 'completed')
+- `idx_carwash_line_items_ticket_id`, `idx_carwash_line_items_catalog_id` - enables fast queries for popular services
 - `idx_carwash_catalog_active`, `idx_carwash_prices_service`, `idx_carwash_prices_active`
 
 **JSONB fields**:
@@ -211,6 +227,7 @@ psql < migrations/2025-11-06_connected_links_step4_validate.sql
 ```
 
 This will:
+
 1. Add nullable columns: `orders.user_id`, `orders.shift_id`, `order_items.product_id`, `carwash_services.order_id_fk`, `stock_movements.user_id`
 2. Create indexes for performance on new columns
 3. Add NOT VALID foreign keys (won't block on legacy data)
@@ -219,35 +236,47 @@ This will:
 ## What you can now do with this schema
 
 **Sales Analytics:**
+
 - Track sales by cashier, shift, and time period
-- Identify top-selling products (via `order_items.product_id`)
+- Identify top-selling Coffee products (via `order_items.product_id`)
+- Identify most popular Carwash services (via `carwash_service_line_items.catalog_service_id`)
 - Compare Coffee vs Carwash revenue by business unit
+- Analyze service popularity by vehicle type
 
 **Inventory Auditing:**
+
 - See who performed each stock adjustment (`stock_movements.user_id`)
 - Enforce unique ingredient names (case-insensitive)
 - Track ingredient usage over time
 
 **Customer History:**
+
 - Link carwash service jobs to payment records (`carwash_services.order_id_fk`)
 - View complete customer transaction history
 - Generate customer-specific reports
 
 **Operational Reports:**
+
 - Shift-based sales reports (when shifts are tracked)
 - Cashier performance metrics
 - Real-time product inventory alerts
+- Most requested carwash services with pricing trends
 
 ## Source of truth
 
 All tables are explicitly defined in:
+
 - `backend/create_users_table.js` - users table
 - `backend/create_shifts_table.js` - shifts table (now with TIMESTAMPTZ)
 - `backend/migrate_standardize_schema.js` - complete schema with all tables, indexes, and constraints
 
 Table creation is also handled by:
+
 - `backend/carwash_routes.js` - carwash_services table with auto-migrations
 - `backend/order_routes.js` - orders/order_items created inline during first order
 
 **Recommended**: Run the migration script on your production database to ensure consistency.
+
+```
+
 ```

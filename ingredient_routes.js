@@ -99,7 +99,7 @@ router.post("/movement", async (req, res) => {
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id;
         `;
-    const userId = req.user && (req.user.userId || req.user.id) || null;
+    const userId = (req.user && (req.user.userId || req.user.id)) || null;
     const values = [
       ingredient_id,
       userId,

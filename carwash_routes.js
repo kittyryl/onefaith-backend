@@ -48,9 +48,43 @@ router.get("/services", async (req, res) => {
   try {
     await ensureTable();
     const result = await db.query(
-      `SELECT order_id, order_id_fk, created_at, status, started_at, completed_at, cancelled_at, vehicle_type, plate_number, customer_name, customer_phone, cancel_reason, payment_method, total, items
-       FROM carwash_services
-       ORDER BY created_at DESC`
+      `SELECT 
+        cs.order_id, 
+        cs.order_id_fk, 
+        cs.created_at, 
+        cs.status, 
+        cs.started_at, 
+        cs.completed_at, 
+        cs.cancelled_at, 
+        cs.vehicle_type, 
+        cs.plate_number, 
+        cs.customer_name, 
+        cs.customer_phone, 
+        cs.cancel_reason, 
+        cs.payment_method, 
+        cs.total, 
+        cs.items,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'catalog_service_id', li.catalog_service_id,
+              'service_name', cat.name,
+              'vehicle_type', li.vehicle_type,
+              'unit_price', li.unit_price,
+              'quantity', li.quantity,
+              'line_total', li.line_total
+            )
+          ) FILTER (WHERE li.id IS NOT NULL),
+          '[]'::json
+        ) as line_items
+       FROM carwash_services cs
+       LEFT JOIN carwash_service_line_items li ON cs.id = li.service_ticket_id
+       LEFT JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+       GROUP BY cs.id, cs.order_id, cs.order_id_fk, cs.created_at, cs.status, cs.started_at, 
+                cs.completed_at, cs.cancelled_at, cs.vehicle_type, cs.plate_number, 
+                cs.customer_name, cs.customer_phone, cs.cancel_reason, cs.payment_method, 
+                cs.total, cs.items
+       ORDER BY cs.created_at DESC`
     );
 
     // Normalize shape
@@ -70,6 +104,7 @@ router.get("/services", async (req, res) => {
       payment_method: r.payment_method,
       total: Number(r.total),
       items: Array.isArray(r.items) ? r.items : [],
+      line_items: r.line_items || [],
     }));
 
     res.json(rows);
@@ -101,31 +136,75 @@ router.post("/services", async (req, res) => {
 
   try {
     await ensureTable();
-    const upsertSQL = `
-      INSERT INTO carwash_services (order_id, vehicle_type, plate_number, customer_name, customer_phone, payment_method, total, items, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
-      ON CONFLICT (order_id) DO UPDATE SET
-        vehicle_type = EXCLUDED.vehicle_type,
-        plate_number = EXCLUDED.plate_number,
-        customer_name = EXCLUDED.customer_name,
-        customer_phone = EXCLUDED.customer_phone,
-        payment_method = EXCLUDED.payment_method,
-        total = EXCLUDED.total,
-        items = EXCLUDED.items,
-        status = CASE WHEN carwash_services.status = 'cancelled' THEN carwash_services.status ELSE EXCLUDED.status END;
-    `;
-    await db.query(upsertSQL, [
-      order_id,
-      vehicle_type,
-      plate_number,
-      customer_name,
-      customer_phone,
-      payment_method,
-      total,
-      JSON.stringify(items),
-      status,
-    ]);
-    res.status(201).json({ message: "Service ticket upserted", order_id });
+    
+    // Start transaction to insert both service ticket and line items
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      
+      const upsertSQL = `
+        INSERT INTO carwash_services (order_id, vehicle_type, plate_number, customer_name, customer_phone, payment_method, total, items, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+        ON CONFLICT (order_id) DO UPDATE SET
+          vehicle_type = EXCLUDED.vehicle_type,
+          plate_number = EXCLUDED.plate_number,
+          customer_name = EXCLUDED.customer_name,
+          customer_phone = EXCLUDED.customer_phone,
+          payment_method = EXCLUDED.payment_method,
+          total = EXCLUDED.total,
+          items = EXCLUDED.items,
+          status = CASE WHEN carwash_services.status = 'cancelled' THEN carwash_services.status ELSE EXCLUDED.status END
+        RETURNING id;
+      `;
+      const serviceResult = await client.query(upsertSQL, [
+        order_id,
+        vehicle_type,
+        plate_number,
+        customer_name,
+        customer_phone,
+        payment_method,
+        total,
+        JSON.stringify(items),
+        status,
+      ]);
+      
+      const serviceTicketId = serviceResult.rows[0].id;
+      
+      // Delete existing line items on conflict (for upsert behavior)
+      await client.query('DELETE FROM carwash_service_line_items WHERE service_ticket_id = $1', [serviceTicketId]);
+      
+      // Insert line items linking to catalog
+      if (items && items.length > 0) {
+        const lineItemSQL = `
+          INSERT INTO carwash_service_line_items (service_ticket_id, catalog_service_id, vehicle_type, unit_price, quantity, line_total)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `;
+        for (const item of items) {
+          const catalogServiceId = item.serviceId ? parseInt(item.serviceId) : null;
+          const itemVehicle = item.vehicle || vehicle_type;
+          const unitPrice = Number(item.price) || 0;
+          const qty = item.quantity || 1;
+          const lineTotal = unitPrice * qty;
+          
+          await client.query(lineItemSQL, [
+            serviceTicketId,
+            catalogServiceId,
+            itemVehicle,
+            unitPrice,
+            qty,
+            lineTotal,
+          ]);
+        }
+      }
+      
+      await client.query('COMMIT');
+      res.status(201).json({ message: "Service ticket upserted", order_id });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     console.error("[Carwash] POST /services error:", err.message);
     res
@@ -155,7 +234,10 @@ router.patch("/services/:id/link-order", async (req, res) => {
     }
     res.json({ success: true, service: result.rows[0] });
   } catch (err) {
-    console.error("[Carwash] PATCH /services/:id/link-order error:", err.message);
+    console.error(
+      "[Carwash] PATCH /services/:id/link-order error:",
+      err.message
+    );
     res
       .status(500)
       .json({ message: "Failed to link service to order", error: err.message });

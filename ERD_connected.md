@@ -5,8 +5,8 @@ This is an optional, more connected design that links sales, inventory, users, a
 ```mermaid
 erDiagram
   USERS ||--o{ SHIFTS : "user_id"
-  USERS ||--o{ ORDERS : "user_id"    
-  SHIFTS ||--o{ ORDERS : "shift_id"  
+  USERS ||--o{ ORDERS : "user_id"
+  SHIFTS ||--o{ ORDERS : "shift_id"
 
   ORDERS ||--o{ ORDER_ITEMS : "order_id"
   PRODUCTS ||--o{ ORDER_ITEMS : "product_id (nullable)"
@@ -138,11 +138,13 @@ erDiagram
 ## What this enables
 
 - Traceability and reporting
+
   - Attribute orders to users and shifts (sales per cashier/shift).
   - Join order items to products for analytics while preserving price snapshots (unit_price stays on order_items).
   - Link carwash service jobs to orders after payment, keeping operational timelines separate.
 
 - Manual inventory control
+
   - Inventory adjustments are recorded via IN/OUT/AUDIT stock movements only (no automatic deduction from sales).
 
 - Cleaner auditing
@@ -152,6 +154,7 @@ erDiagram
 ## Constraints and indexes
 
 - New FKs/indexes (recommended):
+
   - orders.user_id → users(id), index on orders(user_id)
   - orders.shift_id → shifts(id), index on orders(shift_id)
   - order_items.product_id → products(id) (NULL allowed), index on order_items(product_id)
@@ -166,16 +169,17 @@ erDiagram
 
 ## Migration approach (safe rollout)
 
-1) Schema changes (add columns nullable):
+1. Schema changes (add columns nullable):
+
 - orders.user_id, orders.shift_id
 - order_items.product_id (nullable)
 - carwash_services.order_id (nullable)
 - stock_movements.user_id (nullable)
 
-2) Add FKs as NOT VALID, then VALIDATE to avoid long locks.
-3) Backfill values where known (e.g., current active shift to orders).
-4) Update app to write new columns.
-5) Keep inventory adjustments manual via stock movements.
+2. Add FKs as NOT VALID, then VALIDATE to avoid long locks.
+3. Backfill values where known (e.g., current active shift to orders).
+4. Update app to write new columns.
+5. Keep inventory adjustments manual via stock movements.
 
 ## Notes
 

@@ -43,7 +43,7 @@ router.post("/", async (req, res) => {
     }
 
     // Insert order
-  const orderInsertQuery = `
+    const orderInsertQuery = `
       INSERT INTO orders (
         subtotal, discount, total, payment_method,
         cash_tendered, change_due, order_type, discount_type,
@@ -70,7 +70,7 @@ router.post("/", async (req, res) => {
     const orderId = orderResult.rows[0].id;
 
     // Insert items
-  const itemInsertQuery = `
+    const itemInsertQuery = `
       INSERT INTO order_items (
         order_id, product_id, business_unit, item_type, unit_price, quantity, line_total, item_details
       )
