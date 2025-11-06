@@ -137,9 +137,9 @@ router.post("/services", async (req, res) => {
 // Link a carwash service ticket to a paid order (set FK)
 router.patch("/services/:id/link-order", async (req, res) => {
   const ticketId = req.params.id; // matches TEXT order_id
-  const { order_id } = req.body || {}; // DB orders.id
-  if (!order_id || isNaN(Number(order_id))) {
-    return res.status(400).json({ message: "order_id (numeric) is required" });
+  const { order_id } = req.body || {}; // DB orders.id (UUID)
+  if (!order_id) {
+    return res.status(400).json({ message: "order_id is required" });
   }
   try {
     await ensureTable();
@@ -149,7 +149,7 @@ router.patch("/services/:id/link-order", async (req, res) => {
        WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
        RETURNING order_id, order_id_fk;
     `;
-    const result = await db.query(sql, [ticketId, Number(order_id)]);
+    const result = await db.query(sql, [ticketId, order_id]);
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Service not found" });
     }
