@@ -2,9 +2,9 @@
 
 Now that `carwash_service_line_items` links service tickets to the catalog, you can run powerful analytics queries.
 
-## Popular Services Report
+## Popular Services Report (Completed Orders Only)
 
-Find the most requested carwash services:
+Find the most requested carwash services (excluding cancelled):
 
 ```sql
 SELECT 
@@ -15,13 +15,36 @@ SELECT
   SUM(li.line_total) AS total_revenue,
   AVG(li.unit_price) AS avg_price
 FROM carwash_service_line_items li
+JOIN carwash_services cs ON li.service_ticket_id = cs.id
 JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+WHERE cs.status != 'cancelled'  -- Exclude cancellations
 GROUP BY cat.id, cat.name, cat.category
 ORDER BY times_ordered DESC
 LIMIT 10;
 ```
 
-## Services by Vehicle Type
+## All Services (Including Cancelled)
+
+See total demand including cancelled orders:
+
+```sql
+SELECT 
+  cat.name AS service_name,
+  cat.category,
+  COUNT(*) AS total_requested,
+  SUM(CASE WHEN cs.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
+  SUM(CASE WHEN cs.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+  SUM(li.line_total) AS total_potential_revenue,
+  SUM(CASE WHEN cs.status != 'cancelled' THEN li.line_total ELSE 0 END) AS actual_revenue
+FROM carwash_service_line_items li
+JOIN carwash_services cs ON li.service_ticket_id = cs.id
+JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+GROUP BY cat.id, cat.name, cat.category
+ORDER BY total_requested DESC
+LIMIT 10;
+```
+
+## Services by Vehicle Type (Completed Only)
 
 See which services are popular for each vehicle type:
 
@@ -32,13 +55,33 @@ SELECT
   COUNT(*) AS times_ordered,
   SUM(li.line_total) AS revenue
 FROM carwash_service_line_items li
+JOIN carwash_services cs ON li.service_ticket_id = cs.id
 JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
 WHERE li.vehicle_type IS NOT NULL
+  AND cs.status != 'cancelled'  -- Exclude cancellations
 GROUP BY li.vehicle_type, cat.name
 ORDER BY li.vehicle_type, times_ordered DESC;
 ```
 
-## Revenue by Service Over Time
+## Cancellation Analysis
+
+Find which services get cancelled most often:
+
+```sql
+SELECT 
+  cat.name AS service_name,
+  COUNT(*) AS times_cancelled,
+  SUM(li.line_total) AS revenue_lost,
+  STRING_AGG(DISTINCT cs.cancel_reason, ', ') AS common_reasons
+FROM carwash_service_line_items li
+JOIN carwash_services cs ON li.service_ticket_id = cs.id
+JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+WHERE cs.status = 'cancelled'
+GROUP BY cat.name
+ORDER BY times_cancelled DESC;
+```
+
+## Revenue by Service Over Time (Completed Only)
 
 Track service revenue trends:
 
@@ -52,6 +95,7 @@ FROM carwash_service_line_items li
 JOIN carwash_services cs ON li.service_ticket_id = cs.id
 JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
 WHERE cs.created_at >= NOW() - INTERVAL '30 days'
+  AND cs.status != 'cancelled'  -- Exclude cancellations
 GROUP BY DATE(cs.created_at), cat.name
 ORDER BY date DESC, daily_revenue DESC;
 ```
