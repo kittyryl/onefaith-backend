@@ -177,4 +177,89 @@ router.get("/carwash/services-by-vehicle", async (req, res) => {
   }
 });
 
+// Carwash revenue trends (last 30 days, completed only)
+router.get("/carwash/revenue-trends", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        DATE(cs.created_at) AS date,
+        SUM(li.line_total) AS revenue
+      FROM carwash_service_line_items li
+      JOIN carwash_services cs ON li.service_ticket_id = cs.id
+      WHERE cs.created_at >= NOW() - INTERVAL '30 days'
+        AND cs.status != 'cancelled'
+      GROUP BY DATE(cs.created_at)
+      ORDER BY date ASC;
+    `;
+    const result = await db.query(query);
+    // normalize numbers
+    const rows = result.rows.map((r) => ({
+      date: r.date,
+      revenue: Number(r.revenue) || 0,
+    }));
+    res.json(rows);
+  } catch (err) {
+    console.error("[Reports] Carwash revenue trends error:", err);
+    res.status(500).json({ message: "Failed to fetch revenue trends" });
+  }
+});
+
+// ===== COFFEE ANALYTICS ENDPOINTS =====
+
+// Top Coffee products
+router.get("/coffee/top-products", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        p.name AS product_name,
+        COALESCE(p.category, 'Uncategorized') AS category,
+        SUM(oi.quantity) AS total_quantity,
+        SUM(oi.line_total) AS total_revenue
+      FROM order_items oi
+      JOIN products p ON oi.product_id = p.id
+      WHERE oi.business_unit = 'Coffee'
+      GROUP BY p.id, p.name, p.category
+      ORDER BY total_revenue DESC
+      LIMIT 10;
+    `;
+    const result = await db.query(query);
+    const rows = result.rows.map((r) => ({
+      product_name: r.product_name,
+      category: r.category,
+      total_quantity: Number(r.total_quantity) || 0,
+      total_revenue: Number(r.total_revenue) || 0,
+    }));
+    res.json(rows);
+  } catch (err) {
+    console.error("[Reports] Coffee top products error:", err);
+    res.status(500).json({ message: "Failed to fetch coffee top products" });
+  }
+});
+
+// Coffee revenue trends (last 30 days)
+router.get("/coffee/revenue-trends", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        DATE(o.created_at) AS date,
+        SUM(oi.line_total) AS revenue
+      FROM orders o
+      JOIN order_items oi ON o.id = oi.order_id
+      WHERE oi.business_unit = 'Coffee'
+        AND o.created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(o.created_at)
+      ORDER BY date ASC;
+    `;
+    const result = await db.query(query);
+    const rows = result.rows.map((r) => ({
+      date: r.date,
+      revenue: Number(r.revenue) || 0,
+    }));
+    res.json(rows);
+  } catch (err) {
+    console.error("[Reports] Coffee revenue trends error:", err);
+    res.status(500).json({ message: "Failed to fetch coffee revenue trends" });
+  }
+});
+
 module.exports = router;
