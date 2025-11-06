@@ -8,6 +8,7 @@ async function ensureTable() {
     CREATE TABLE IF NOT EXISTS carwash_services (
       id SERIAL PRIMARY KEY,
       order_id TEXT UNIQUE NOT NULL,
+      order_id_fk INT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       status TEXT NOT NULL DEFAULT 'queue',
       started_at TIMESTAMPTZ NULL,
@@ -25,6 +26,9 @@ async function ensureTable() {
   `;
   await db.query(createTableSQL);
   // Additive migrations
+  await db.query(
+    "ALTER TABLE carwash_services ADD COLUMN IF NOT EXISTS order_id_fk INT NULL"
+  );
   await db.query(
     "ALTER TABLE carwash_services ADD COLUMN IF NOT EXISTS customer_name TEXT NULL;"
   );
@@ -44,7 +48,7 @@ router.get("/services", async (req, res) => {
   try {
     await ensureTable();
     const result = await db.query(
-      `SELECT order_id, created_at, status, started_at, completed_at, cancelled_at, vehicle_type, plate_number, customer_name, customer_phone, cancel_reason, payment_method, total, items
+      `SELECT order_id, order_id_fk, created_at, status, started_at, completed_at, cancelled_at, vehicle_type, plate_number, customer_name, customer_phone, cancel_reason, payment_method, total, items
        FROM carwash_services
        ORDER BY created_at DESC`
     );
@@ -52,6 +56,7 @@ router.get("/services", async (req, res) => {
     // Normalize shape
     const rows = result.rows.map((r) => ({
       order_id: r.order_id,
+      order_id_fk: r.order_id_fk,
       created_at: r.created_at,
       status: r.status,
       started_at: r.started_at,
@@ -126,6 +131,34 @@ router.post("/services", async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to create service", error: err.message });
+  }
+});
+
+// Link a carwash service ticket to a paid order (set FK)
+router.patch("/services/:id/link-order", async (req, res) => {
+  const ticketId = req.params.id; // matches TEXT order_id
+  const { order_id } = req.body || {}; // DB orders.id
+  if (!order_id || isNaN(Number(order_id))) {
+    return res.status(400).json({ message: "order_id (numeric) is required" });
+  }
+  try {
+    await ensureTable();
+    const sql = `
+      UPDATE carwash_services
+         SET order_id_fk = $2
+       WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
+       RETURNING order_id, order_id_fk;
+    `;
+    const result = await db.query(sql, [ticketId, Number(order_id)]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Service not found" });
+    }
+    res.json({ success: true, service: result.rows[0] });
+  } catch (err) {
+    console.error("[Carwash] PATCH /services/:id/link-order error:", err.message);
+    res
+      .status(500)
+      .json({ message: "Failed to link service to order", error: err.message });
   }
 });
 

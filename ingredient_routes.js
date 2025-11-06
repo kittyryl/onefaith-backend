@@ -45,12 +45,10 @@ router.post("/", async (req, res) => {
       [String(name).trim()]
     );
     if (dupCheck.rowCount > 0) {
-      return res
-        .status(409)
-        .json({
-          message:
-            "An ingredient with this name already exists. Please use a different name.",
-        });
+      return res.status(409).json({
+        message:
+          "An ingredient with this name already exists. Please use a different name.",
+      });
     }
 
     const query = `
@@ -91,12 +89,24 @@ router.post("/movement", async (req, res) => {
   }
 
   try {
+    // Ensure user_id column exists (idempotent)
+    await db.query(
+      "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS user_id INT NULL"
+    );
+
     const query = `
-            INSERT INTO stock_movements (ingredient_id, quantity, movement_type, notes)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO stock_movements (ingredient_id, user_id, quantity, movement_type, notes)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id;
         `;
-    const values = [ingredient_id, quantity, movement_type, notes || null];
+    const userId = req.user && (req.user.userId || req.user.id) || null;
+    const values = [
+      ingredient_id,
+      userId,
+      quantity,
+      movement_type,
+      notes || null,
+    ];
     const result = await db.query(query, values);
     res.status(201).json({
       message: "Stock movement recorded successfully",
@@ -126,12 +136,10 @@ router.put("/:id", async (req, res) => {
       [String(name).trim(), id]
     );
     if (dupCheck.rowCount > 0) {
-      return res
-        .status(409)
-        .json({
-          message:
-            "An ingredient with this name already exists. Please use a different name.",
-        });
+      return res.status(409).json({
+        message:
+          "An ingredient with this name already exists. Please use a different name.",
+      });
     }
 
     const query = `
