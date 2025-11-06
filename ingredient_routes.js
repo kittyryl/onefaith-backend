@@ -39,14 +39,23 @@ router.post("/", async (req, res) => {
   }
 
   try {
+    // Prevent duplicate ingredient names (case-insensitive)
+    const dupCheck = await db.query(
+      "SELECT id FROM ingredients WHERE LOWER(name) = LOWER($1)",
+      [String(name).trim()]
+    );
+    if (dupCheck.rowCount > 0) {
+      return res.status(409).json({ message: "Ingredient already exists." });
+    }
+
     const query = `
             INSERT INTO ingredients (name, category, unit_of_measure, required_stock)
             VALUES ($1, $2, $3, $4)
             RETURNING id, name;
         `;
     const values = [
-      name,
-      category,
+      String(name).trim(),
+      String(category).trim(),
       unit_of_measure || null,
       required_stock || 0,
     ];
@@ -104,6 +113,15 @@ router.put("/:id", async (req, res) => {
   }
 
   try {
+    // Prevent renaming to an existing ingredient name (case-insensitive)
+    const dupCheck = await db.query(
+      "SELECT id FROM ingredients WHERE LOWER(name) = LOWER($1) AND id <> $2",
+      [String(name).trim(), id]
+    );
+    if (dupCheck.rowCount > 0) {
+      return res.status(409).json({ message: "Ingredient already exists." });
+    }
+
     const query = `
             UPDATE ingredients SET 
                 name = $1, 
@@ -114,8 +132,8 @@ router.put("/:id", async (req, res) => {
             RETURNING id, name;
         `;
     const values = [
-      name,
-      category,
+      String(name).trim(),
+      String(category).trim(),
       unit_of_measure || null,
       required_stock,
       id,
