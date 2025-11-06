@@ -35,7 +35,7 @@ router.post("/", async (req, res) => {
   if (!name || !category) {
     return res
       .status(400)
-      .json({ message: "Missing required fields: name or category." });
+      .json({ message: "Please provide both name and category." });
   }
 
   try {
@@ -45,7 +45,12 @@ router.post("/", async (req, res) => {
       [String(name).trim()]
     );
     if (dupCheck.rowCount > 0) {
-      return res.status(409).json({ message: "Ingredient already exists." });
+      return res
+        .status(409)
+        .json({
+          message:
+            "An ingredient with this name already exists. Please use a different name.",
+        });
     }
 
     const query = `
@@ -66,7 +71,9 @@ router.post("/", async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating ingredient:", error);
-    res.status(500).json({ message: "Failed to create ingredient." });
+    res
+      .status(500)
+      .json({ message: "Unable to create the ingredient at this time." });
   }
 });
 
@@ -109,7 +116,7 @@ router.put("/:id", async (req, res) => {
   if (!name || !category || required_stock === undefined) {
     return res
       .status(400)
-      .json({ message: "Missing required fields for update." });
+      .json({ message: "Please provide name, category, and required stock." });
   }
 
   try {
@@ -119,7 +126,12 @@ router.put("/:id", async (req, res) => {
       [String(name).trim(), id]
     );
     if (dupCheck.rowCount > 0) {
-      return res.status(409).json({ message: "Ingredient already exists." });
+      return res
+        .status(409)
+        .json({
+          message:
+            "An ingredient with this name already exists. Please use a different name.",
+        });
     }
 
     const query = `
@@ -148,7 +160,9 @@ router.put("/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating ingredient:", error);
-    res.status(500).json({ message: "Failed to update ingredient." });
+    res
+      .status(500)
+      .json({ message: "Unable to update the ingredient at this time." });
   }
 });
 
