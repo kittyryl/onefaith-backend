@@ -6,18 +6,37 @@ const db = require("./db");
 router.get("/", async (req, res) => {
   try {
     const query = `
+            WITH latest_audit AS (
+                SELECT DISTINCT ON (ingredient_id) 
+                    ingredient_id,
+                    quantity AS audit_quantity,
+                    created_at AS audit_time
+                FROM stock_movements
+                WHERE movement_type = 'AUDIT'
+                ORDER BY ingredient_id, created_at DESC
+            ),
+            movements_after_audit AS (
+                SELECT 
+                    sm.ingredient_id,
+                    SUM(
+                        CASE 
+                            WHEN sm.movement_type = 'IN' THEN sm.quantity 
+                            WHEN sm.movement_type = 'OUT' THEN -sm.quantity
+                            ELSE 0 
+                        END
+                    ) AS net_movement
+                FROM stock_movements sm
+                LEFT JOIN latest_audit la ON sm.ingredient_id = la.ingredient_id
+                WHERE sm.movement_type IN ('IN', 'OUT')
+                  AND (la.audit_time IS NULL OR sm.created_at > la.audit_time)
+                GROUP BY sm.ingredient_id
+            )
             SELECT 
                 i.id, i.name, i.category, i.unit_of_measure, i.required_stock,
-                COALESCE(SUM(
-                    CASE 
-                        WHEN sm.movement_type = 'IN' OR sm.movement_type = 'AUDIT' THEN sm.quantity 
-                        WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-                        ELSE 0 
-                    END
-                ), 0) AS current_stock
+                COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock
             FROM ingredients i
-            LEFT JOIN stock_movements sm ON i.id = sm.ingredient_id
-            GROUP BY i.id, i.name, i.category, i.unit_of_measure, i.required_stock
+            LEFT JOIN latest_audit la ON i.id = la.ingredient_id
+            LEFT JOIN movements_after_audit maa ON i.id = maa.ingredient_id
             ORDER BY i.category, i.name;
         `;
     const result = await db.query(query);
