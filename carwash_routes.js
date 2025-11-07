@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const logger = require("./logger");
 
 // Ensure table exists
 async function ensureTable() {
@@ -130,18 +131,75 @@ router.post("/services", async (req, res) => {
     status = "queue",
   } = req.body || {};
 
+  // Validation
   if (!order_id) {
-    return res.status(400).json({ message: "order_id is required" });
+    logger.warn("Carwash service creation failed: Missing order_id");
+    return res.status(400).json({ message: "Order ID is required" });
+  }
+
+  // Validate vehicle type if provided
+  const validVehicleTypes = ["Sedan", "SUV", "Pickup", "Van", "Motorcycle"];
+  if (vehicle_type && !validVehicleTypes.includes(vehicle_type)) {
+    logger.warn("Carwash service creation failed: Invalid vehicle type", {
+      vehicle_type,
+    });
+    return res.status(400).json({
+      message: `Vehicle type must be one of: ${validVehicleTypes.join(", ")}`,
+    });
+  }
+
+  // Validate customer name length
+  if (customer_name && customer_name.length > 100) {
+    logger.warn("Carwash service creation failed: Customer name too long");
+    return res
+      .status(400)
+      .json({ message: "Customer name must be 100 characters or less" });
+  }
+
+  // Validate phone number format (Philippine format +639XXXXXXXXX or 09XXXXXXXXX)
+  if (customer_phone && customer_phone.trim()) {
+    const phoneRegex = /^(\+639|09)\d{9}$/;
+    const cleanPhone = customer_phone.replace(/[\s\-()]/g, "");
+    if (!phoneRegex.test(cleanPhone)) {
+      logger.warn("Carwash service creation failed: Invalid phone format", {
+        customer_phone,
+      });
+      return res.status(400).json({
+        message: "Phone number must be in format: +639XXXXXXXXX or 09XXXXXXXXX",
+      });
+    }
+  }
+
+  // Validate plate number length
+  if (plate_number && plate_number.length > 20) {
+    logger.warn("Carwash service creation failed: Plate number too long");
+    return res
+      .status(400)
+      .json({ message: "Plate number must be 20 characters or less" });
+  }
+
+  // Validate total
+  if (isNaN(total) || total < 0) {
+    logger.warn("Carwash service creation failed: Invalid total", { total });
+    return res.status(400).json({ message: "Total must be a positive number" });
+  }
+
+  // Validate items
+  if (!Array.isArray(items) || items.length === 0) {
+    logger.warn("Carwash service creation failed: No items provided");
+    return res
+      .status(400)
+      .json({ message: "At least one service item is required" });
   }
 
   try {
     await ensureTable();
-    
+
     // Start transaction to insert both service ticket and line items
     const client = await db.getClient();
     try {
-      await client.query('BEGIN');
-      
+      await client.query("BEGIN");
+
       const upsertSQL = `
         INSERT INTO carwash_services (order_id, vehicle_type, plate_number, customer_name, customer_phone, payment_method, total, items, status)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
@@ -167,12 +225,15 @@ router.post("/services", async (req, res) => {
         JSON.stringify(items),
         status,
       ]);
-      
+
       const serviceTicketId = serviceResult.rows[0].id;
-      
+
       // Delete existing line items on conflict (for upsert behavior)
-      await client.query('DELETE FROM carwash_service_line_items WHERE service_ticket_id = $1', [serviceTicketId]);
-      
+      await client.query(
+        "DELETE FROM carwash_service_line_items WHERE service_ticket_id = $1",
+        [serviceTicketId]
+      );
+
       // Insert line items linking to catalog
       if (items && items.length > 0) {
         const lineItemSQL = `
@@ -180,12 +241,14 @@ router.post("/services", async (req, res) => {
           VALUES ($1, $2, $3, $4, $5, $6)
         `;
         for (const item of items) {
-          const catalogServiceId = item.serviceId ? parseInt(item.serviceId) : null;
+          const catalogServiceId = item.serviceId
+            ? parseInt(item.serviceId)
+            : null;
           const itemVehicle = item.vehicle || vehicle_type;
           const unitPrice = Number(item.price) || 0;
           const qty = item.quantity || 1;
           const lineTotal = unitPrice * qty;
-          
+
           await client.query(lineItemSQL, [
             serviceTicketId,
             catalogServiceId,
@@ -196,20 +259,38 @@ router.post("/services", async (req, res) => {
           ]);
         }
       }
-      
-      await client.query('COMMIT');
+
+      await client.query("COMMIT");
+      logger.info("Carwash service ticket upserted", {
+        order_id,
+        serviceTicketId,
+        total,
+        itemCount: items.length,
+      });
       res.status(201).json({ message: "Service ticket upserted", order_id });
     } catch (err) {
-      await client.query('ROLLBACK');
+      await client.query("ROLLBACK");
+      logger.error(
+        "Failed to upsert carwash service - transaction rolled back",
+        {
+          error: err.message,
+          stack: err.stack,
+          order_id,
+        }
+      );
       throw err;
     } finally {
       client.release();
     }
   } catch (err) {
-    console.error("[Carwash] POST /services error:", err.message);
-    res
-      .status(500)
-      .json({ message: "Failed to create service", error: err.message });
+    logger.error("Carwash service creation error", {
+      error: err.message,
+      stack: err.stack,
+    });
+    res.status(500).json({
+      message: "Failed to create service. Please try again.",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 });
 

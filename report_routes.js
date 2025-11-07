@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const { requireManager } = require("./auth_middleware");
 
 // Sales totals by day per business unit (last 7 days)
 router.get("/sales-by-business-by-day", async (req, res) => {
@@ -102,7 +103,8 @@ router.get("/summary", async (req, res) => {
 // ===== CARWASH ANALYTICS ENDPOINTS =====
 
 // Popular carwash services (completed only)
-router.get("/carwash/popular-services", async (req, res) => {
+// Manager-only analytics
+router.get("/carwash/popular-services", requireManager, async (req, res) => {
   try {
     const query = `
       SELECT 
@@ -129,7 +131,7 @@ router.get("/carwash/popular-services", async (req, res) => {
 });
 
 // Cancellation analysis
-router.get("/carwash/cancellations", async (req, res) => {
+router.get("/carwash/cancellations", requireManager, async (req, res) => {
   try {
     const query = `
       SELECT 
@@ -153,7 +155,7 @@ router.get("/carwash/cancellations", async (req, res) => {
 });
 
 // Services by vehicle type
-router.get("/carwash/services-by-vehicle", async (req, res) => {
+router.get("/carwash/services-by-vehicle", requireManager, async (req, res) => {
   try {
     const query = `
       SELECT 
@@ -178,7 +180,7 @@ router.get("/carwash/services-by-vehicle", async (req, res) => {
 });
 
 // Carwash revenue trends (last 30 days, completed only)
-router.get("/carwash/revenue-trends", async (req, res) => {
+router.get("/carwash/revenue-trends", requireManager, async (req, res) => {
   try {
     const query = `
       SELECT 
@@ -207,7 +209,7 @@ router.get("/carwash/revenue-trends", async (req, res) => {
 // ===== COFFEE ANALYTICS ENDPOINTS =====
 
 // Top Coffee products
-router.get("/coffee/top-products", async (req, res) => {
+router.get("/coffee/top-products", requireManager, async (req, res) => {
   try {
     const query = `
       SELECT 
@@ -237,7 +239,7 @@ router.get("/coffee/top-products", async (req, res) => {
 });
 
 // Coffee revenue trends (last 30 days)
-router.get("/coffee/revenue-trends", async (req, res) => {
+router.get("/coffee/revenue-trends", requireManager, async (req, res) => {
   try {
     const query = `
       SELECT 

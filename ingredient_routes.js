@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const logger = require("./logger");
+const { requireManager } = require("./auth_middleware");
 
 // Get ingredients with calculated current stock
 router.get("/", async (req, res) => {
@@ -42,28 +44,57 @@ router.get("/", async (req, res) => {
     const result = await db.query(query);
     res.status(200).json(result.rows);
   } catch (error) {
-    console.error("Error calculating current stock:", error);
+    logger.error("Error calculating current stock", {
+      error: error.message,
+      stack: error.stack,
+    });
     res.status(500).json({ message: "Failed to calculate current stock." });
   }
 });
 
 // Create ingredient
-router.post("/", async (req, res) => {
+// Create ingredient (manager only)
+router.post("/", requireManager, async (req, res) => {
   const { name, category, unit_of_measure, required_stock } = req.body;
 
+  // Validation
   if (!name || !category) {
+    logger.warn("Ingredient creation failed: Missing name or category");
+    return res.status(400).json({ message: "Name and category are required" });
+  }
+
+  const trimmedName = String(name).trim();
+  if (trimmedName.length > 100) {
+    logger.warn("Ingredient creation failed: Name too long", {
+      name: trimmedName,
+    });
     return res
       .status(400)
-      .json({ message: "Please provide both name and category." });
+      .json({ message: "Ingredient name must be 100 characters or less" });
+  }
+
+  if (
+    required_stock !== undefined &&
+    (isNaN(required_stock) || required_stock < 0)
+  ) {
+    logger.warn("Ingredient creation failed: Invalid required stock", {
+      required_stock,
+    });
+    return res
+      .status(400)
+      .json({ message: "Required stock must be a positive number" });
   }
 
   try {
     // Prevent duplicate ingredient names (case-insensitive)
     const dupCheck = await db.query(
       "SELECT id FROM ingredients WHERE LOWER(name) = LOWER($1)",
-      [String(name).trim()]
+      [trimmedName]
     );
     if (dupCheck.rowCount > 0) {
+      logger.warn("Ingredient creation failed: Duplicate name", {
+        name: trimmedName,
+      });
       return res.status(409).json({
         message:
           "An ingredient with this name already exists. Please use a different name.",
@@ -76,18 +107,24 @@ router.post("/", async (req, res) => {
             RETURNING id, name;
         `;
     const values = [
-      String(name).trim(),
+      trimmedName,
       String(category).trim(),
       unit_of_measure || null,
       required_stock || 0,
     ];
     const result = await db.query(query, values);
+    logger.info("Ingredient created successfully", {
+      ingredient: result.rows[0],
+    });
     res.status(201).json({
       message: "Ingredient created successfully",
       ingredient: result.rows[0],
     });
   } catch (error) {
-    console.error("Error creating ingredient:", error);
+    logger.error("Error creating ingredient", {
+      error: error.message,
+      stack: error.stack,
+    });
     res
       .status(500)
       .json({ message: "Unable to create the ingredient at this time." });
@@ -95,16 +132,66 @@ router.post("/", async (req, res) => {
 });
 
 // Record stock movement (IN/OUT/AUDIT)
+// Record stock movement (AUDIT restricted to manager)
 router.post("/movement", async (req, res) => {
   const { ingredient_id, quantity, movement_type, notes } = req.body;
 
-  if (!ingredient_id || !quantity || !movement_type) {
+  // Validation
+  if (!ingredient_id || quantity === undefined || !movement_type) {
+    logger.warn("Stock movement failed: Missing required fields");
+    return res.status(400).json({
+      message: "Ingredient ID, quantity, and movement type are required",
+    });
+  }
+
+  if (!["IN", "OUT", "AUDIT"].includes(movement_type)) {
+    logger.warn("Stock movement failed: Invalid movement type", {
+      movement_type,
+    });
     return res
       .status(400)
-      .json({ message: "Missing required fields for movement." });
+      .json({ message: "Movement type must be IN, OUT, or AUDIT" });
   }
-  if (!["IN", "OUT", "AUDIT"].includes(movement_type)) {
-    return res.status(400).json({ message: "Invalid movement type." });
+
+  // Restrict AUDIT to manager role
+  if (movement_type === "AUDIT" && req.user?.role !== "manager") {
+    logger.warn("Stock movement failed: AUDIT restricted to manager", {
+      userId: req.user && (req.user.userId || req.user.id),
+    });
+    return res
+      .status(403)
+      .json({ message: "Only managers can perform AUDIT movements" });
+  }
+
+  // Validate quantity based on movement type
+  if (movement_type === "AUDIT") {
+    if (isNaN(quantity) || quantity < 0) {
+      logger.warn("Stock movement failed: Invalid AUDIT quantity", {
+        quantity,
+      });
+      return res
+        .status(400)
+        .json({ message: "AUDIT quantity must be zero or positive" });
+    }
+  } else {
+    // IN or OUT
+    if (isNaN(quantity) || quantity <= 0) {
+      logger.warn("Stock movement failed: Invalid quantity for IN/OUT", {
+        movement_type,
+        quantity,
+      });
+      return res
+        .status(400)
+        .json({ message: "Quantity for IN/OUT must be greater than zero" });
+    }
+  }
+
+  // Validate notes length
+  if (notes && notes.length > 500) {
+    logger.warn("Stock movement failed: Notes too long");
+    return res
+      .status(400)
+      .json({ message: "Notes must be 500 characters or less" });
   }
 
   try {
@@ -127,34 +214,74 @@ router.post("/movement", async (req, res) => {
       notes || null,
     ];
     const result = await db.query(query, values);
+    logger.info("Stock movement recorded", {
+      movementId: result.rows[0].id,
+      ingredient_id,
+      movement_type,
+      quantity,
+      userId,
+    });
     res.status(201).json({
       message: "Stock movement recorded successfully",
       movementId: result.rows[0].id,
     });
   } catch (error) {
-    console.error("Error recording stock movement:", error);
-    res.status(500).json({ message: "Failed to record stock movement." });
+    logger.error("Error recording stock movement", {
+      error: error.message,
+      stack: error.stack,
+    });
+    res
+      .status(500)
+      .json({ message: "Failed to record stock movement. Please try again." });
   }
 });
 
 // Update ingredient
-router.put("/:id", async (req, res) => {
+// Update ingredient (manager only)
+router.put("/:id", requireManager, async (req, res) => {
   const id = req.params.id;
   const { name, category, unit_of_measure, required_stock } = req.body;
 
+  // Validation
   if (!name || !category || required_stock === undefined) {
+    logger.warn("Ingredient update failed: Missing required fields", { id });
     return res
       .status(400)
-      .json({ message: "Please provide name, category, and required stock." });
+      .json({ message: "Name, category, and required stock are required" });
+  }
+
+  const trimmedName = String(name).trim();
+  if (trimmedName.length > 100) {
+    logger.warn("Ingredient update failed: Name too long", {
+      id,
+      name: trimmedName,
+    });
+    return res
+      .status(400)
+      .json({ message: "Ingredient name must be 100 characters or less" });
+  }
+
+  if (isNaN(required_stock) || required_stock < 0) {
+    logger.warn("Ingredient update failed: Invalid required stock", {
+      id,
+      required_stock,
+    });
+    return res
+      .status(400)
+      .json({ message: "Required stock must be a positive number" });
   }
 
   try {
     // Prevent renaming to an existing ingredient name (case-insensitive)
     const dupCheck = await db.query(
       "SELECT id FROM ingredients WHERE LOWER(name) = LOWER($1) AND id <> $2",
-      [String(name).trim(), id]
+      [trimmedName, id]
     );
     if (dupCheck.rowCount > 0) {
+      logger.warn("Ingredient update failed: Duplicate name", {
+        id,
+        name: trimmedName,
+      });
       return res.status(409).json({
         message:
           "An ingredient with this name already exists. Please use a different name.",
@@ -171,7 +298,7 @@ router.put("/:id", async (req, res) => {
             RETURNING id, name;
         `;
     const values = [
-      String(name).trim(),
+      trimmedName,
       String(category).trim(),
       unit_of_measure || null,
       required_stock,
@@ -179,44 +306,51 @@ router.put("/:id", async (req, res) => {
     ];
     const result = await db.query(query, values);
     if (result.rowCount === 0) {
+      logger.warn("Ingredient update failed: Not found", { id });
       return res.status(404).json({ message: "Ingredient not found." });
     }
+    logger.info("Ingredient updated successfully", {
+      ingredient: result.rows[0],
+    });
     res.status(200).json({
       message: "Ingredient updated successfully",
       ingredient: result.rows[0],
     });
   } catch (error) {
-    console.error("Error updating ingredient:", error);
+    logger.error("Error updating ingredient", {
+      error: error.message,
+      stack: error.stack,
+      id,
+    });
     res
       .status(500)
       .json({ message: "Unable to update the ingredient at this time." });
   }
 });
 
-// Delete ingredient (and related movements)
-router.delete("/:id", async (req, res) => {
+// Delete ingredient
+// Delete ingredient (manager only)
+router.delete("/:id", requireManager, async (req, res) => {
   const id = req.params.id;
-  try {
-    await db.query("BEGIN");
-    await db.query("DELETE FROM stock_movements WHERE ingredient_id = $1", [
-      id,
-    ]);
-    const result = await db.query(
-      "DELETE FROM ingredients WHERE id = $1 RETURNING id",
-      [id]
-    );
-    await db.query("COMMIT");
 
+  try {
+    const query = `DELETE FROM ingredients WHERE id = $1 RETURNING id;`;
+    const result = await db.query(query, [id]);
     if (result.rowCount === 0) {
+      logger.warn("Ingredient deletion failed: Not found", { id });
       return res.status(404).json({ message: "Ingredient not found." });
     }
-    res.status(200).json({
-      message: "Ingredient and all related movements deleted successfully.",
-    });
+    logger.info("Ingredient deleted successfully", { id });
+    res.status(200).json({ message: "Ingredient deleted successfully" });
   } catch (error) {
-    await db.query("ROLLBACK");
-    console.error("Error deleting ingredient:", error);
-    res.status(500).json({ message: "Failed to delete ingredient." });
+    logger.error("Error deleting ingredient", {
+      error: error.message,
+      stack: error.stack,
+      id,
+    });
+    res
+      .status(500)
+      .json({ message: "Unable to delete the ingredient at this time." });
   }
 });
 

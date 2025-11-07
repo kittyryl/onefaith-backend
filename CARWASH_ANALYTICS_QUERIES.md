@@ -7,7 +7,7 @@ Now that `carwash_service_line_items` links service tickets to the catalog, you 
 Find the most requested carwash services (excluding cancelled):
 
 ```sql
-SELECT 
+SELECT
   cat.name AS service_name,
   cat.category,
   COUNT(*) AS times_ordered,
@@ -28,7 +28,7 @@ LIMIT 10;
 See total demand including cancelled orders:
 
 ```sql
-SELECT 
+SELECT
   cat.name AS service_name,
   cat.category,
   COUNT(*) AS total_requested,
@@ -49,7 +49,7 @@ LIMIT 10;
 See which services are popular for each vehicle type:
 
 ```sql
-SELECT 
+SELECT
   li.vehicle_type,
   cat.name AS service_name,
   COUNT(*) AS times_ordered,
@@ -68,7 +68,7 @@ ORDER BY li.vehicle_type, times_ordered DESC;
 Find which services get cancelled most often:
 
 ```sql
-SELECT 
+SELECT
   cat.name AS service_name,
   COUNT(*) AS times_cancelled,
   SUM(li.line_total) AS revenue_lost,
@@ -86,7 +86,7 @@ ORDER BY times_cancelled DESC;
 Track service revenue trends:
 
 ```sql
-SELECT 
+SELECT
   DATE(cs.created_at) AS date,
   cat.name AS service_name,
   COUNT(DISTINCT cs.id) AS tickets,
@@ -105,7 +105,7 @@ ORDER BY date DESC, daily_revenue DESC;
 Find services that are never ordered (candidates for removal):
 
 ```sql
-SELECT 
+SELECT
   cat.id,
   cat.name,
   cat.category,
@@ -122,7 +122,7 @@ ORDER BY cat.display_order;
 Get full details with cashier and catalog info:
 
 ```sql
-SELECT 
+SELECT
   cs.order_id,
   cs.created_at,
   cs.status,
@@ -148,7 +148,7 @@ LIMIT 50;
 Compare current catalog prices vs historical sales prices:
 
 ```sql
-SELECT 
+SELECT
   cat.name AS service_name,
   li.vehicle_type,
   AVG(li.unit_price) AS avg_historical_price,

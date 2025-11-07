@@ -1,10 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const logger = require("./logger");
 
 // Save a completed order
 router.post("/", async (req, res) => {
   const { orderDetails, businessUnit } = req.body;
+
+  // Validation
+  if (!orderDetails) {
+    logger.warn("Order creation failed: Missing orderDetails");
+    return res.status(400).json({ message: "Order details are required" });
+  }
 
   const {
     subtotal,
@@ -18,6 +25,95 @@ router.post("/", async (req, res) => {
     items,
     orderId: external_order_id,
   } = orderDetails;
+
+  // Validate required fields
+  if (subtotal === undefined || total === undefined || !payment) {
+    logger.warn("Order creation failed: Missing required fields", {
+      orderDetails,
+    });
+    return res
+      .status(400)
+      .json({ message: "Subtotal, total, and payment method are required" });
+  }
+
+  // Validate items array
+  if (!Array.isArray(items) || items.length === 0) {
+    logger.warn("Order creation failed: Empty cart");
+    return res
+      .status(400)
+      .json({ message: "Order must contain at least one item" });
+  }
+
+  // Validate numeric values
+  if (
+    isNaN(subtotal) ||
+    isNaN(discount || 0) ||
+    isNaN(total) ||
+    subtotal < 0 ||
+    total < 0
+  ) {
+    logger.warn("Order creation failed: Invalid amounts", {
+      subtotal,
+      discount,
+      total,
+    });
+    return res
+      .status(400)
+      .json({
+        message: "Invalid order amounts. Amounts must be positive numbers",
+      });
+  }
+
+  // Validate payment method
+  if (!["Cash", "Gcash"].includes(payment)) {
+    logger.warn("Order creation failed: Invalid payment method", { payment });
+    return res
+      .status(400)
+      .json({ message: "Payment method must be Cash or Gcash" });
+  }
+
+  // Validate cash payment
+  if (payment === "Cash") {
+    if (cashTendered === undefined || cashTendered === null) {
+      logger.warn("Order creation failed: Missing cash tendered");
+      return res
+        .status(400)
+        .json({
+          message: "Cash tendered amount is required for cash payments",
+        });
+    }
+    if (isNaN(cashTendered) || cashTendered < total) {
+      logger.warn("Order creation failed: Insufficient cash", {
+        cashTendered,
+        total,
+      });
+      return res
+        .status(400)
+        .json({
+          message: "Cash tendered must be greater than or equal to the total",
+        });
+    }
+  }
+
+  // Validate items
+  for (const item of items) {
+    if (
+      !item.quantity ||
+      item.quantity <= 0 ||
+      !Number.isInteger(item.quantity)
+    ) {
+      logger.warn("Order creation failed: Invalid item quantity", { item });
+      return res
+        .status(400)
+        .json({ message: "All items must have valid positive quantities" });
+    }
+    if (isNaN(item.price) || item.price < 0) {
+      logger.warn("Order creation failed: Invalid item price", { item });
+      return res
+        .status(400)
+        .json({ message: "All items must have valid prices" });
+    }
+  }
 
   const client = await db.pool.connect();
 
@@ -39,7 +135,10 @@ router.post("/", async (req, res) => {
       }
     } catch (e) {
       // Non-fatal: allow orders without shift linkage
-      console.warn("[Orders] Failed to resolve active shift:", e.message);
+      logger.warn("Failed to resolve active shift", {
+        error: e.message,
+        userId,
+      });
     }
 
     // Insert order
@@ -168,16 +267,17 @@ router.post("/", async (req, res) => {
           [carwashOrderId]
         );
         if (before.rowCount) {
-          console.log(
-            `[Carwash][orders] Before upsert for ${carwashOrderId}: status=${before.rows[0].status}, completed_at=${before.rows[0].completed_at}`
-          );
+          logger.info(`Before upsert for ${carwashOrderId}`, {
+            status: before.rows[0].status,
+            completed_at: before.rows[0].completed_at,
+          });
         } else {
-          console.log(
-            `[Carwash][orders] No existing ticket for ${carwashOrderId}`
-          );
+          logger.info(`No existing ticket for ${carwashOrderId}`);
         }
-      } catch (e) {
-        console.warn("[Carwash][orders] Pre-check failed:", e.message);
+      } catch (err) {
+        logger.error("Error checking carwash service status", {
+          error: err.message,
+        });
       }
 
       const upsertSQL = `
@@ -203,26 +303,39 @@ router.post("/", async (req, res) => {
           [carwashOrderId]
         );
         if (after.rowCount) {
-          console.log(
-            `[Carwash][orders] After upsert for ${carwashOrderId}: status=${after.rows[0].status}, completed_at=${after.rows[0].completed_at}`
+          logger.info(
+            `After upsert for ${carwashOrderId}: status=${after.rows[0].status}, completed_at=${after.rows[0].completed_at}`
           );
         }
       } catch (e) {
-        console.warn("[Carwash][orders] Post-check failed:", e.message);
+        logger.error("Post-check failed:", e.message);
       }
     }
 
     await client.query("COMMIT");
+    logger.info("Order created successfully", {
+      orderId,
+      businessUnit,
+      total,
+      itemCount: items.length,
+      userId,
+    });
+
     res.status(201).json({
       message: "Order saved successfully",
-      orderId: orderId,
+      orderId: external_order_id || orderId,
     });
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error saving order:", error.message);
-    res.status(500).json({
-      message: "Failed to save order",
+    logger.error("Failed to create order", {
       error: error.message,
+      stack: error.stack,
+      businessUnit,
+      orderDetails,
+    });
+    res.status(500).json({
+      message: "Failed to save order. Please try again.",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   } finally {
     client.release();

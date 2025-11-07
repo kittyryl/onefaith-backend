@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const { requireManager } = require("./auth_middleware");
 
 // Get products
 router.get("/", async (req, res) => {
@@ -19,7 +20,8 @@ router.get("/", async (req, res) => {
 });
 
 // Create product
-router.post("/", async (req, res) => {
+// Create product (manager only)
+router.post("/", requireManager, async (req, res) => {
   const { name, category, price, needs_temp, image_url } = req.body;
 
   if (!name || !category || price === undefined) {
@@ -54,7 +56,8 @@ router.post("/", async (req, res) => {
 });
 
 // Update product
-router.put("/:id", async (req, res) => {
+// Update product (manager only)
+router.put("/:id", requireManager, async (req, res) => {
   const id = req.params.id; // Get ID from URL parameter
   const { name, category, price, needs_temp, image_url } = req.body;
 
@@ -100,7 +103,8 @@ router.put("/:id", async (req, res) => {
 });
 
 // Delete product
-router.delete("/:id", async (req, res) => {
+// Delete product (manager only)
+router.delete("/:id", requireManager, async (req, res) => {
   const id = req.params.id;
 
   try {
