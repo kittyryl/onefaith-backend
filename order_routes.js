@@ -57,11 +57,9 @@ router.post("/", async (req, res) => {
       discount,
       total,
     });
-    return res
-      .status(400)
-      .json({
-        message: "Invalid order amounts. Amounts must be positive numbers",
-      });
+    return res.status(400).json({
+      message: "Invalid order amounts. Amounts must be positive numbers",
+    });
   }
 
   // Validate payment method
@@ -76,22 +74,18 @@ router.post("/", async (req, res) => {
   if (payment === "Cash") {
     if (cashTendered === undefined || cashTendered === null) {
       logger.warn("Order creation failed: Missing cash tendered");
-      return res
-        .status(400)
-        .json({
-          message: "Cash tendered amount is required for cash payments",
-        });
+      return res.status(400).json({
+        message: "Cash tendered amount is required for cash payments",
+      });
     }
     if (isNaN(cashTendered) || cashTendered < total) {
       logger.warn("Order creation failed: Insufficient cash", {
         cashTendered,
         total,
       });
-      return res
-        .status(400)
-        .json({
-          message: "Cash tendered must be greater than or equal to the total",
-        });
+      return res.status(400).json({
+        message: "Cash tendered must be greater than or equal to the total",
+      });
     }
   }
 
@@ -315,7 +309,7 @@ router.post("/", async (req, res) => {
     await client.query("COMMIT");
     logger.info("Order created successfully", {
       orderId,
-       external_order_id,
+      external_order_id,
       businessUnit,
       total,
       itemCount: items.length,
@@ -324,8 +318,8 @@ router.post("/", async (req, res) => {
 
     res.status(201).json({
       message: "Order saved successfully",
-       orderId: orderId, // Always return the database integer ID
-       externalOrderId: external_order_id, // Also return the external ID if provided
+      orderId: orderId, // Always return the database integer ID
+      externalOrderId: external_order_id, // Also return the external ID if provided
     });
   } catch (error) {
     await client.query("ROLLBACK");

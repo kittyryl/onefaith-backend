@@ -326,13 +326,13 @@ router.patch("/services/:id/link-order", async (req, res) => {
   });
 
   if (!order_id || order_id === null || order_id === undefined) {
-    logger.warn("Link order failed: Missing or null order_id", { 
-      ticketId, 
+    logger.warn("Link order failed: Missing or null order_id", {
+      ticketId,
       order_id,
-      receivedBody: req.body 
+      receivedBody: req.body,
     });
-    return res.status(400).json({ 
-      message: `order_id is required. Received: ${JSON.stringify(order_id)}` 
+    return res.status(400).json({
+      message: `order_id is required. Received: ${JSON.stringify(order_id)}`,
     });
   }
 
@@ -348,14 +348,18 @@ router.patch("/services/:id/link-order", async (req, res) => {
     );
     targetType = typeRes.rows[0]?.data_type || null;
   } catch (e) {
-    logger.warn("Failed to detect order_id_fk column type; proceeding best-effort", {
-      error: e.message,
-    });
+    logger.warn(
+      "Failed to detect order_id_fk column type; proceeding best-effort",
+      {
+        error: e.message,
+      }
+    );
   }
 
   // Coerce order_id based on targetType
   let coercedOrderId = order_id;
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (targetType && targetType.includes("uuid")) {
     // Expect UUID
     if (typeof order_id !== "string" || !uuidRegex.test(order_id)) {
@@ -365,12 +369,18 @@ router.patch("/services/:id/link-order", async (req, res) => {
         targetType,
       });
       return res.status(400).json({
-        message: `order_id must be a valid UUID. Received: ${JSON.stringify(order_id)}`,
+        message: `order_id must be a valid UUID. Received: ${JSON.stringify(
+          order_id
+        )}`,
       });
     }
-  } else if (targetType && (targetType.includes("integer") || targetType.includes("int"))) {
+  } else if (
+    targetType &&
+    (targetType.includes("integer") || targetType.includes("int"))
+  ) {
     // Expect integer
-    const parsed = typeof order_id === "string" ? parseInt(order_id, 10) : order_id;
+    const parsed =
+      typeof order_id === "string" ? parseInt(order_id, 10) : order_id;
     if (isNaN(parsed)) {
       logger.warn("Link order failed: Expected integer for order_id_fk", {
         ticketId,
@@ -378,7 +388,9 @@ router.patch("/services/:id/link-order", async (req, res) => {
         targetType,
       });
       return res.status(400).json({
-        message: `order_id must be a valid integer. Received: ${JSON.stringify(order_id)}`,
+        message: `order_id must be a valid integer. Received: ${JSON.stringify(
+          order_id
+        )}`,
       });
     }
     coercedOrderId = parsed;
@@ -391,7 +403,11 @@ router.patch("/services/:id/link-order", async (req, res) => {
 
   try {
     await ensureTable();
-  logger.info("Linking carwash ticket to order", { ticketId, order_id: coercedOrderId, targetType });
+    logger.info("Linking carwash ticket to order", {
+      ticketId,
+      order_id: coercedOrderId,
+      targetType,
+    });
 
     const sql = `
       UPDATE carwash_services
@@ -399,7 +415,7 @@ router.patch("/services/:id/link-order", async (req, res) => {
        WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
        RETURNING order_id, order_id_fk;
     `;
-  const result = await db.query(sql, [ticketId, coercedOrderId]);
+    const result = await db.query(sql, [ticketId, coercedOrderId]);
 
     if (result.rowCount === 0) {
       logger.warn("Link order failed: Service not found", { ticketId });
@@ -418,7 +434,7 @@ router.patch("/services/:id/link-order", async (req, res) => {
       stack: err.stack,
       ticketId,
       order_id: coercedOrderId,
-      targetType
+      targetType,
     });
     res
       .status(500)
@@ -503,7 +519,7 @@ router.put("/services/:id/complete", async (req, res) => {
             logger.info(`SMS sent successfully for completed carwash service`, {
               orderId,
               phone: service.customer_phone,
-              sid: smsResult.sid,
+              messageId: smsResult.messageId || smsResult.sid || null,
             });
           } else if (!smsResult.skipped) {
             logger.warn(`Failed to send SMS for completed carwash service`, {

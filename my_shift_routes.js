@@ -87,7 +87,7 @@ router.get("/transactions", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
     const { page = "1", size = "10", businessUnit, payment } = req.query;
-    const limit = Math.max(parseInt(String(size), 10) || 10, 1);
+    const limit = Math.min(Math.max(parseInt(String(size), 10) || 10, 1), 1000); // Max 1000
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
@@ -163,7 +163,7 @@ router.get("/all-transactions", async (req, res) => {
     }
 
     const { page = "1", size = "50", staffId, businessUnit, payment, startDate, endDate } = req.query;
-    const limit = Math.max(parseInt(String(size), 10) || 50, 1);
+    const limit = Math.min(Math.max(parseInt(String(size), 10) || 50, 1), 500); // Max 500 for managers
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
@@ -262,7 +262,7 @@ router.get("/history", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
     const { page = "1", size = "20" } = req.query;
-    const limit = Math.max(parseInt(String(size), 10) || 20, 1);
+    const limit = Math.min(Math.max(parseInt(String(size), 10) || 20, 1), 100); // Max 100
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
