@@ -82,25 +82,22 @@ router.get("/summary", async (req, res) => {
 });
 
 // GET /api/reports/my-shift/transactions (mounted under /api/reports/my-shift)
+// Returns ONLY today's transactions for the current user
 router.get("/transactions", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
-    const { page = "1", size = "10", businessUnit, payment, date } = req.query;
+    const { page = "1", size = "10", businessUnit, payment } = req.query;
     const limit = Math.max(parseInt(String(size), 10) || 10, 1);
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
-    const shift = await getShiftForUserOnDate(userId, date);
-
-    const dateCondition = date
-      ? `DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE($2::timestamp AT TIME ZONE 'Asia/Manila')`
-      : `DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')`;
+    const shift = await getTodaysShiftForUser(userId);
 
     const whereParts = [
       "o.user_id = $1",
-      dateCondition,
+      "DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')",
     ];
-    const params = date ? [userId, date] : [userId];
+    const params = [userId];
     let pIndex = params.length + 1;
 
     if (shift && shift.id) {
