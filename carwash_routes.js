@@ -408,7 +408,7 @@ router.patch("/services/:id/link-order", async (req, res) => {
 
     logger.info("Successfully linked carwash ticket to order", {
       ticketId,
-      orderIdInt,
+      order_id: coercedOrderId,
       linkedService: result.rows[0],
     });
     res.json({ success: true, service: result.rows[0] });
