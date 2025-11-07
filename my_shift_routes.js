@@ -255,4 +255,124 @@ router.get("/all-transactions", async (req, res) => {
   }
 });
 
+// GET /api/reports/my-shift/history - Staff sees ALL their shifts with transactions grouped by shift
+router.get("/history", async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const { page = "1", size = "20" } = req.query;
+    const limit = Math.max(parseInt(String(size), 10) || 20, 1);
+    const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
+    const offset = (pageNum - 1) * limit;
+
+    // Get all shifts for this user with their transaction counts and totals
+    const sql = `
+      SELECT 
+        s.id as shift_id,
+        s.start_time,
+        s.end_time,
+        s.status,
+        DATE(s.start_time AT TIME ZONE 'Asia/Manila') as shift_date,
+        COUNT(DISTINCT o.id) as order_count,
+        COALESCE(SUM(o.total), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN oi.business_unit = 'Coffee' THEN oi.line_total ELSE 0 END), 0) AS coffee_sales,
+        COALESCE(SUM(CASE WHEN oi.business_unit = 'Carwash' THEN oi.line_total ELSE 0 END), 0) AS carwash_sales,
+        COALESCE(SUM(CASE WHEN o.payment_method = 'Cash' THEN o.total ELSE 0 END), 0) AS cash_sales,
+        COALESCE(SUM(CASE WHEN o.payment_method = 'Gcash' THEN o.total ELSE 0 END), 0) AS gcash_sales
+      FROM shifts s
+      LEFT JOIN orders o ON o.shift_id = s.id AND o.user_id = s.user_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE s.user_id = $1
+      GROUP BY s.id, s.start_time, s.end_time, s.status
+      ORDER BY s.start_time DESC
+      LIMIT $2 OFFSET $3;
+    `;
+
+    // Count total shifts
+    const countSQL = `SELECT COUNT(*) as total FROM shifts WHERE user_id = $1;`;
+    const countResult = await db.query(countSQL, [userId]);
+    const total = Number(countResult.rows[0]?.total || 0);
+
+    const result = await db.query(sql, [userId, limit, offset]);
+
+    res.json({
+      page: pageNum,
+      size: limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      shifts: result.rows.map(row => ({
+        shift_id: row.shift_id,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        status: row.status,
+        shift_date: row.shift_date,
+        stats: {
+          orderCount: Number(row.order_count) || 0,
+          totalSales: Number(row.total_sales) || 0,
+          byBusinessUnit: {
+            Coffee: Number(row.coffee_sales) || 0,
+            Carwash: Number(row.carwash_sales) || 0,
+          },
+          byPayment: {
+            Cash: Number(row.cash_sales) || 0,
+            Gcash: Number(row.gcash_sales) || 0,
+          },
+        }
+      }))
+    });
+  } catch (err) {
+    console.error("[MyShift] history error:", err);
+    res.status(500).json({ message: "Failed to fetch shift history" });
+  }
+});
+
+// GET /api/reports/my-shift/shift-transactions/:shiftId - Get transactions for a specific shift
+router.get("/shift-transactions/:shiftId", async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const { shiftId } = req.params;
+
+    // Verify the shift belongs to the user
+    const shiftCheck = await db.query(
+      "SELECT id FROM shifts WHERE id = $1 AND user_id = $2",
+      [shiftId, userId]
+    );
+
+    if (shiftCheck.rowCount === 0) {
+      return res.status(403).json({ message: "Access denied to this shift" });
+    }
+
+    // Get all transactions for this shift
+    const sql = `
+      SELECT 
+        o.id AS order_id,
+        o.created_at,
+        o.total,
+        o.payment_method,
+        json_agg(
+          json_build_object(
+            'business_unit', oi.business_unit,
+            'item_type', oi.item_type,
+            'quantity', oi.quantity,
+            'line_total', oi.line_total,
+            'details', oi.item_details
+          )
+        ) AS items
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.shift_id = $1 AND o.user_id = $2
+      GROUP BY o.id
+      ORDER BY o.created_at DESC;
+    `;
+
+    const result = await db.query(sql, [shiftId, userId]);
+
+    res.json({
+      transactions: result.rows
+    });
+  } catch (err) {
+    console.error("[MyShift] shift-transactions error:", err);
+    res.status(500).json({ message: "Failed to fetch shift transactions" });
+  }
+});
+
 module.exports = router;
