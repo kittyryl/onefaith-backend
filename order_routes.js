@@ -315,6 +315,7 @@ router.post("/", async (req, res) => {
     await client.query("COMMIT");
     logger.info("Order created successfully", {
       orderId,
+       external_order_id,
       businessUnit,
       total,
       itemCount: items.length,
@@ -323,7 +324,8 @@ router.post("/", async (req, res) => {
 
     res.status(201).json({
       message: "Order saved successfully",
-      orderId: external_order_id || orderId,
+       orderId: orderId, // Always return the database integer ID
+       externalOrderId: external_order_id, // Also return the external ID if provided
     });
   } catch (error) {
     await client.query("ROLLBACK");

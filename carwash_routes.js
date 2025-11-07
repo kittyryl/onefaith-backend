@@ -135,10 +135,11 @@ router.post("/services", async (req, res) => {
   // Log the incoming request for debugging
   logger.info("Carwash service creation request", {
     order_id,
-    vehicle_type,
-    customer_phone,
+    vehicle_type: `"${vehicle_type}"`,
+    customer_phone: customer_phone ? `"${customer_phone}"` : null,
     itemCount: items?.length,
     total,
+    status,
   });
 
   // Validation
@@ -147,15 +148,22 @@ router.post("/services", async (req, res) => {
     return res.status(400).json({ message: "Order ID is required" });
   }
 
-  // Validate vehicle type if provided
-  const validVehicleTypes = ["Sedan", "SUV", "Pickup", "Van", "Motorcycle"];
-  if (vehicle_type && !validVehicleTypes.includes(vehicle_type)) {
-    logger.warn("Carwash service creation failed: Invalid vehicle type", {
-      vehicle_type,
-    });
-    return res.status(400).json({
-      message: `Vehicle type must be one of: ${validVehicleTypes.join(", ")}`,
-    });
+  // Validate vehicle type if provided (case-insensitive)
+  const validVehicleTypes = ["Sedan", "SUV", "Pickup", "Van", "Motorcycle", "Pick-up", "Motor"];
+  if (vehicle_type && vehicle_type.trim()) {
+    const normalizedVehicleType = vehicle_type.trim();
+    const isValid = validVehicleTypes.some(
+      (valid) => valid.toLowerCase() === normalizedVehicleType.toLowerCase()
+    );
+    if (!isValid) {
+      logger.warn("Carwash service creation failed: Invalid vehicle type", {
+        vehicle_type,
+        validTypes: validVehicleTypes,
+      });
+      return res.status(400).json({
+        message: `Vehicle type must be one of: ${validVehicleTypes.join(", ")} (case-insensitive). Received: "${vehicle_type}"`,
+      });
+    }
   }
 
   // Validate customer name length
@@ -315,20 +323,40 @@ router.patch("/services/:id/link-order", async (req, res) => {
   const ticketId = req.params.id; // matches TEXT order_id (e.g., "ORD-abc123")
   const { order_id } = req.body || {}; // DB orders.id (INTEGER from SERIAL)
 
-  if (!order_id) {
-    logger.warn("Link order failed: Missing order_id", { ticketId });
-    return res.status(400).json({ message: "order_id is required" });
+  logger.info("Link order request received", { 
+    ticketId, 
+    order_id, 
+    order_id_type: typeof order_id,
+    body: req.body 
+  });
+
+  if (!order_id || order_id === null || order_id === undefined) {
+    logger.warn("Link order failed: Missing or null order_id", { 
+      ticketId, 
+      order_id,
+      receivedBody: req.body 
+    });
+    return res.status(400).json({ 
+      message: `order_id is required. Received: ${JSON.stringify(order_id)}` 
+    });
   }
 
   // Convert to integer if it's a string
   const orderIdInt =
     typeof order_id === "string" ? parseInt(order_id, 10) : order_id;
 
-  if (isNaN(orderIdInt)) {
-    logger.warn("Link order failed: Invalid order_id", { ticketId, order_id });
+  if (isNaN(orderIdInt) || orderIdInt === null || orderIdInt === undefined) {
+    logger.warn("Link order failed: Invalid order_id", { 
+      ticketId, 
+      order_id,
+      orderIdInt,
+      type: typeof order_id
+    });
     return res
       .status(400)
-      .json({ message: "order_id must be a valid integer" });
+      .json({ 
+        message: `order_id must be a valid integer. Received: ${JSON.stringify(order_id)} (type: ${typeof order_id})` 
+      });
   }
 
   try {
