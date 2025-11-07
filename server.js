@@ -42,8 +42,8 @@ const corsOptions = {
 
 // Apply CORS for all routes
 app.use(cors(corsOptions));
-// Explicitly handle preflight before any auth middleware
-app.options("*", cors(corsOptions));
+// Explicitly handle preflight before any auth middleware (use regex, not '*', to avoid path-to-regexp error)
+app.options(/^\/.*$/, cors(corsOptions));
 app.use(express.json());
 app.use(morgan("dev"));
 
