@@ -31,29 +31,46 @@ function normalizePhonePH(phone) {
 async function sendSms({ to, body }) {
   const enabled = process.env.SMS_ENABLED === "true";
   const from = process.env.TWILIO_FROM; // E.164, e.g., +15005550006 (trial) or your number
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID; // optional alternative
   const client = getTwilioClient();
 
   const normTo = normalizePhonePH(to);
 
   if (!enabled) {
-    logger.info("[SMS] (disabled) Would send SMS", { to: normTo, body });
+    logger.info("[SMS] (disabled) Would send SMS", {
+      to: normTo,
+      body,
+      from,
+      messagingServiceSid,
+    });
     return { skipped: true };
   }
-  if (!client || !from) {
-    logger.warn("[SMS] Missing configuration; skipping send", {
-      hasClient: !!client,
-      hasFrom: !!from,
-    });
+  if (!client) {
+    logger.warn("[SMS] Missing Twilio client; skipping send");
+    return { skipped: true };
+  }
+  if (!from && !messagingServiceSid) {
+    logger.warn("[SMS] Missing configuration; provide TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID");
     return { skipped: true };
   }
 
   try {
-    const resp = await client.messages.create({ to: normTo, from, body });
+    const payload = messagingServiceSid
+      ? { to: normTo, messagingServiceSid, body }
+      : { to: normTo, from, body };
+
+    const resp = await client.messages.create(payload);
     logger.info("[SMS] Sent", { sid: resp.sid, to: normTo });
     return { success: true, sid: resp.sid };
   } catch (err) {
-    logger.error("[SMS] Send failed", { error: err.message || String(err) });
-    return { success: false, error: err.message || String(err) };
+    const twilioError = {
+      message: err?.message,
+      code: err?.code,
+      status: err?.status,
+      moreInfo: err?.moreInfo,
+    };
+    logger.error("[SMS] Send failed", twilioError);
+    return { success: false, error: err?.message || String(err), details: twilioError };
   }
 }
 
