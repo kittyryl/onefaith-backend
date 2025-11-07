@@ -15,6 +15,7 @@ const carwashRoutes = require("./carwash_routes");
 const carwashCatalogRoutes = require("./carwash_catalog_routes");
 const shiftRoutes = require("./shift_routes");
 const setupRoutes = require("./setup_routes");
+const myShiftRoutes = require("./my_shift_routes");
 const { authenticateToken, requireManager } = require("./auth_middleware");
 
 const app = express();
@@ -29,7 +30,11 @@ const allowedOrigins = process.env.CORS_ORIGIN
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl) or if wildcard
-    if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+    if (
+      !origin ||
+      allowedOrigins.includes("*") ||
+      allowedOrigins.includes(origin)
+    ) {
       return callback(null, true);
     }
     return callback(new Error("Not allowed by CORS: " + origin));
@@ -58,6 +63,7 @@ app.use("/api/carwash-catalog", carwashCatalogRoutes); // Public for POS, admin 
 app.use("/api/orders", authenticateToken, orderRoutes);
 app.use("/api/ingredients", authenticateToken, ingredientRoutes);
 app.use("/api/products", authenticateToken, productRoutes);
+app.use("/api/reports/my-shift", authenticateToken, myShiftRoutes);
 app.use("/api/reports", authenticateToken, reportRoutes);
 app.use("/api/upload", authenticateToken, uploadRoutes);
 app.use("/api/carwash", authenticateToken, carwashRoutes);
