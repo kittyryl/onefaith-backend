@@ -210,6 +210,19 @@ router.get("/all-transactions", async (req, res) => {
     const countResult = await db.query(countSQL, params);
     const total = Number(countResult.rows[0]?.total || 0);
 
+    // Aggregates for all matching (not just current page)
+    const aggregateSQL = `
+      SELECT 
+        COALESCE(SUM(o.total), 0) AS total_revenue,
+        COALESCE(SUM(CASE WHEN oi.business_unit = 'Coffee' THEN oi.line_total ELSE 0 END), 0) AS coffee_item_revenue,
+        COALESCE(SUM(CASE WHEN oi.business_unit = 'Carwash' THEN oi.line_total ELSE 0 END), 0) AS carwash_item_revenue
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE ${whereSQL};
+    `;
+    const aggregateResult = await db.query(aggregateSQL, params);
+    const aggregatesRow = aggregateResult.rows[0] || {};
+
     // Fetch transactions with user info
     const sql = `
       SELECT 
@@ -249,6 +262,11 @@ router.get("/all-transactions", async (req, res) => {
       size: limit,
       total,
       totalPages: Math.ceil(total / limit),
+      aggregates: {
+        totalRevenue: Number(aggregatesRow.total_revenue) || 0,
+        coffeeItemRevenue: Number(aggregatesRow.coffee_item_revenue) || 0,
+        carwashItemRevenue: Number(aggregatesRow.carwash_item_revenue) || 0,
+      },
       transactions: result.rows,
     });
   } catch (err) {
