@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const logger = require("./logger");
+const { sendSms } = require("./sms");
 
 // Ensure table exists
 async function ensureTable() {
@@ -131,6 +132,15 @@ router.post("/services", async (req, res) => {
     status = "queue",
   } = req.body || {};
 
+  // Log the incoming request for debugging
+  logger.info("Carwash service creation request", {
+    order_id,
+    vehicle_type,
+    customer_phone,
+    itemCount: items?.length,
+    total,
+  });
+
   // Validation
   if (!order_id) {
     logger.warn("Carwash service creation failed: Missing order_id");
@@ -157,15 +167,21 @@ router.post("/services", async (req, res) => {
   }
 
   // Validate phone number format (Philippine format +639XXXXXXXXX or 09XXXXXXXXX)
-  if (customer_phone && customer_phone.trim()) {
+  // Only validate if phone is provided and not empty
+  if (
+    customer_phone &&
+    customer_phone.trim() &&
+    customer_phone.trim().length > 0
+  ) {
     const phoneRegex = /^(\+639|09)\d{9}$/;
     const cleanPhone = customer_phone.replace(/[\s\-()]/g, "");
     if (!phoneRegex.test(cleanPhone)) {
       logger.warn("Carwash service creation failed: Invalid phone format", {
         customer_phone,
+        cleanPhone,
       });
       return res.status(400).json({
-        message: "Phone number must be in format: +639XXXXXXXXX or 09XXXXXXXXX",
+        message: `Phone number must be in format: +639XXXXXXXXX or 09XXXXXXXXX. Received: ${cleanPhone}`,
       });
     }
   }
@@ -296,29 +312,55 @@ router.post("/services", async (req, res) => {
 
 // Link a carwash service ticket to a paid order (set FK)
 router.patch("/services/:id/link-order", async (req, res) => {
-  const ticketId = req.params.id; // matches TEXT order_id
-  const { order_id } = req.body || {}; // DB orders.id (UUID)
+  const ticketId = req.params.id; // matches TEXT order_id (e.g., "ORD-abc123")
+  const { order_id } = req.body || {}; // DB orders.id (INTEGER from SERIAL)
+
   if (!order_id) {
+    logger.warn("Link order failed: Missing order_id", { ticketId });
     return res.status(400).json({ message: "order_id is required" });
   }
+
+  // Convert to integer if it's a string
+  const orderIdInt =
+    typeof order_id === "string" ? parseInt(order_id, 10) : order_id;
+
+  if (isNaN(orderIdInt)) {
+    logger.warn("Link order failed: Invalid order_id", { ticketId, order_id });
+    return res
+      .status(400)
+      .json({ message: "order_id must be a valid integer" });
+  }
+
   try {
     await ensureTable();
+    logger.info("Linking carwash ticket to order", { ticketId, orderIdInt });
+
     const sql = `
       UPDATE carwash_services
          SET order_id_fk = $2
        WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
        RETURNING order_id, order_id_fk;
     `;
-    const result = await db.query(sql, [ticketId, order_id]);
+    const result = await db.query(sql, [ticketId, orderIdInt]);
+
     if (result.rowCount === 0) {
+      logger.warn("Link order failed: Service not found", { ticketId });
       return res.status(404).json({ message: "Service not found" });
     }
+
+    logger.info("Successfully linked carwash ticket to order", {
+      ticketId,
+      orderIdInt,
+      linkedService: result.rows[0],
+    });
     res.json({ success: true, service: result.rows[0] });
   } catch (err) {
-    console.error(
-      "[Carwash] PATCH /services/:id/link-order error:",
-      err.message
-    );
+    logger.error("Link order error", {
+      error: err.message,
+      stack: err.stack,
+      ticketId,
+      orderIdInt,
+    });
     res
       .status(500)
       .json({ message: "Failed to link service to order", error: err.message });
@@ -355,17 +397,75 @@ router.put("/services/:id/complete", async (req, res) => {
   const orderId = req.params.id;
   try {
     await ensureTable();
+
+    // First, get the service details including customer phone
+    const getServiceSQL = `
+      SELECT order_id, customer_name, customer_phone, vehicle_type, plate_number
+      FROM carwash_services
+      WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
+        AND status = 'in_progress'
+    `;
+    const serviceData = await db.query(getServiceSQL, [orderId]);
+
+    if (serviceData.rowCount === 0) {
+      return res
+        .status(404)
+        .json({ message: "Service not found or not in progress" });
+    }
+
+    const service = serviceData.rows[0];
+
+    // Update the service to completed
     const sql = `
       UPDATE carwash_services
       SET status = 'completed', completed_at = NOW()
-  WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
-    AND status = 'in_progress'
-      RETURNING order_id, status, completed_at;
+      WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
+        AND status = 'in_progress'
+      RETURNING order_id, status, completed_at, customer_name, customer_phone;
     `;
     const result = await db.query(sql, [orderId]);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Service not found" });
+
+    // Send SMS notification if customer phone is available
+    if (service.customer_phone && service.customer_phone.trim()) {
+      const customerName = service.customer_name || "Valued Customer";
+      const vehicleInfo = service.plate_number
+        ? `${service.vehicle_type || "Vehicle"} (${service.plate_number})`
+        : service.vehicle_type || "Your vehicle";
+
+      const smsBody = `Hi ${customerName}! Your carwash service for ${vehicleInfo} is now complete and ready for pickup. Thank you for choosing OneFaith Carwash!`;
+
+      // Send SMS asynchronously (don't block the response)
+      sendSms({
+        to: service.customer_phone,
+        body: smsBody,
+      })
+        .then((smsResult) => {
+          if (smsResult.success) {
+            logger.info(`SMS sent successfully for completed carwash service`, {
+              orderId,
+              phone: service.customer_phone,
+              sid: smsResult.sid,
+            });
+          } else if (!smsResult.skipped) {
+            logger.warn(`Failed to send SMS for completed carwash service`, {
+              orderId,
+              phone: service.customer_phone,
+              error: smsResult.error,
+            });
+          }
+        })
+        .catch((err) => {
+          logger.error(`Error sending SMS for completed carwash service`, {
+            orderId,
+            error: err.message,
+          });
+        });
+    } else {
+      logger.info(`No phone number available for SMS notification`, {
+        orderId,
+      });
     }
+
     res.json({ message: "Service completed", service: result.rows[0] });
   } catch (err) {
     console.error("[Carwash] PUT /services/:id/complete error:", err.message);
