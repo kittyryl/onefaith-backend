@@ -148,21 +148,16 @@ router.post("/services", async (req, res) => {
     return res.status(400).json({ message: "Order ID is required" });
   }
 
-  // Validate vehicle type if provided (case-insensitive)
-  const validVehicleTypes = ["Sedan", "SUV", "Pickup", "Van", "Motorcycle", "Pick-up", "Motor"];
+  // Validate vehicle type if provided: relax to allow any non-empty string up to 50 chars
   if (vehicle_type && vehicle_type.trim()) {
     const normalizedVehicleType = vehicle_type.trim();
-    const isValid = validVehicleTypes.some(
-      (valid) => valid.toLowerCase() === normalizedVehicleType.toLowerCase()
-    );
-    if (!isValid) {
-      logger.warn("Carwash service creation failed: Invalid vehicle type", {
+    if (normalizedVehicleType.length > 50) {
+      logger.warn("Carwash service creation failed: Vehicle type too long", {
         vehicle_type,
-        validTypes: validVehicleTypes,
       });
-      return res.status(400).json({
-        message: `Vehicle type must be one of: ${validVehicleTypes.join(", ")} (case-insensitive). Received: "${vehicle_type}"`,
-      });
+      return res
+        .status(400)
+        .json({ message: "Vehicle type must be 50 characters or less" });
     }
   }
 
@@ -323,11 +318,11 @@ router.patch("/services/:id/link-order", async (req, res) => {
   const ticketId = req.params.id; // matches TEXT order_id (e.g., "ORD-abc123")
   const { order_id } = req.body || {}; // DB orders.id (INTEGER from SERIAL)
 
-  logger.info("Link order request received", { 
-    ticketId, 
-    order_id, 
+  logger.info("Link order request received", {
+    ticketId,
+    order_id,
     order_id_type: typeof order_id,
-    body: req.body 
+    body: req.body,
   });
 
   if (!order_id || order_id === null || order_id === undefined) {
@@ -341,27 +336,62 @@ router.patch("/services/:id/link-order", async (req, res) => {
     });
   }
 
-  // Convert to integer if it's a string
-  const orderIdInt =
-    typeof order_id === "string" ? parseInt(order_id, 10) : order_id;
-
-  if (isNaN(orderIdInt) || orderIdInt === null || orderIdInt === undefined) {
-    logger.warn("Link order failed: Invalid order_id", { 
-      ticketId, 
-      order_id,
-      orderIdInt,
-      type: typeof order_id
+  // Detect column type of carwash_services.order_id_fk to coerce correctly (uuid vs integer)
+  let targetType = null;
+  try {
+    const typeRes = await db.query(
+      `SELECT data_type
+         FROM information_schema.columns
+        WHERE table_name = 'carwash_services'
+          AND column_name = 'order_id_fk'
+        LIMIT 1`
+    );
+    targetType = typeRes.rows[0]?.data_type || null;
+  } catch (e) {
+    logger.warn("Failed to detect order_id_fk column type; proceeding best-effort", {
+      error: e.message,
     });
-    return res
-      .status(400)
-      .json({ 
-        message: `order_id must be a valid integer. Received: ${JSON.stringify(order_id)} (type: ${typeof order_id})` 
+  }
+
+  // Coerce order_id based on targetType
+  let coercedOrderId = order_id;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (targetType && targetType.includes("uuid")) {
+    // Expect UUID
+    if (typeof order_id !== "string" || !uuidRegex.test(order_id)) {
+      logger.warn("Link order failed: Expected UUID for order_id_fk", {
+        ticketId,
+        order_id,
+        targetType,
       });
+      return res.status(400).json({
+        message: `order_id must be a valid UUID. Received: ${JSON.stringify(order_id)}`,
+      });
+    }
+  } else if (targetType && (targetType.includes("integer") || targetType.includes("int"))) {
+    // Expect integer
+    const parsed = typeof order_id === "string" ? parseInt(order_id, 10) : order_id;
+    if (isNaN(parsed)) {
+      logger.warn("Link order failed: Expected integer for order_id_fk", {
+        ticketId,
+        order_id,
+        targetType,
+      });
+      return res.status(400).json({
+        message: `order_id must be a valid integer. Received: ${JSON.stringify(order_id)}`,
+      });
+    }
+    coercedOrderId = parsed;
+  } else {
+    // Unknown type, best effort: if number-like, coerce to int; else pass-through
+    if (typeof order_id === "string" && /^\d+$/.test(order_id)) {
+      coercedOrderId = parseInt(order_id, 10);
+    }
   }
 
   try {
     await ensureTable();
-    logger.info("Linking carwash ticket to order", { ticketId, orderIdInt });
+  logger.info("Linking carwash ticket to order", { ticketId, order_id: coercedOrderId, targetType });
 
     const sql = `
       UPDATE carwash_services
@@ -369,7 +399,7 @@ router.patch("/services/:id/link-order", async (req, res) => {
        WHERE (TRIM(order_id) = TRIM($1) OR UPPER(TRIM(order_id)) = UPPER(TRIM($1)))
        RETURNING order_id, order_id_fk;
     `;
-    const result = await db.query(sql, [ticketId, orderIdInt]);
+  const result = await db.query(sql, [ticketId, coercedOrderId]);
 
     if (result.rowCount === 0) {
       logger.warn("Link order failed: Service not found", { ticketId });
@@ -387,7 +417,8 @@ router.patch("/services/:id/link-order", async (req, res) => {
       error: err.message,
       stack: err.stack,
       ticketId,
-      orderIdInt,
+      order_id: coercedOrderId,
+      targetType
     });
     res
       .status(500)
