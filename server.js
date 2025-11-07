@@ -24,12 +24,26 @@ const PORT = process.env.PORT || 5000;
 // CORS: allow explicit origins via CORS_ORIGIN (comma-separated), else allow all (dev)
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
-  : "*";
-app.use(
-  cors({
-    origin: allowedOrigins,
-  })
-);
+  : ["*"];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl) or if wildcard
+    if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS: " + origin));
+  },
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+  preflightContinue: false,
+};
+
+// Apply CORS for all routes
+app.use(cors(corsOptions));
+// Explicitly handle preflight before any auth middleware
+app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(morgan("dev"));
 
