@@ -1,5 +1,68 @@
 const logger = require("./logger");
 
+// SMS Provider: IProg Tech (Philippine SMS)
+async function sendViaIProg({ to, body }) {
+  const apiToken = process.env.IPROG_API_TOKEN;
+
+  if (!apiToken) {
+    logger.warn("[SMS][IProg] Missing configuration");
+    return { success: false, error: "Missing IProg API token" };
+  }
+
+  const normTo = normalizePhonePH(to);
+  
+  try {
+    // IProg accepts 09XXXXXXXXX or 639XXXXXXXXX format
+    const phoneNumber = normTo.startsWith("+63") 
+      ? normTo.slice(1)  // Remove + for 639XXXXXXXXX
+      : normTo.replace(/^0/, "63"); // Convert 09XX to 639XX
+
+    const url = new URL("https://sms.iprogtech.com/api/v1/sms_messages");
+    url.searchParams.append("api_token", apiToken);
+    url.searchParams.append("phone_number", phoneNumber);
+    url.searchParams.append("message", body);
+
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+    
+    // IProg returns status 200 for success
+    if (result.status === 200) {
+      logger.info("[SMS][IProg] Sent successfully", { 
+        to: normTo,
+        messageId: result.message_id 
+      });
+      return { 
+        success: true, 
+        provider: "iprog",
+        messageId: result.message_id 
+      };
+    } else {
+      logger.error("[SMS][IProg] Send failed", { 
+        to: normTo, 
+        status: result.status,
+        message: result.message 
+      });
+      return { 
+        success: false, 
+        error: result.message || "Unknown error",
+        status: result.status 
+      };
+    }
+  } catch (err) {
+    logger.error("[SMS][IProg] Request failed", { 
+      to: normTo,
+      error: err.message 
+    });
+    return { success: false, error: err.message };
+  }
+}
+
 // SMS Provider: Itexmo (Philippine SMS)
 async function sendViaItexmo({ to, body }) {
   const apiCode = process.env.ITEXMO_API_CODE;
@@ -135,7 +198,7 @@ function normalizePhonePH(phone) {
 
 async function sendSms({ to, body }) {
   const enabled = process.env.SMS_ENABLED === "true";
-  const provider = process.env.SMS_PROVIDER || "itexmo"; // Default to Itexmo
+  const provider = process.env.SMS_PROVIDER || "iprog"; // Default to IProg
 
   const normTo = normalizePhonePH(to);
 
@@ -150,15 +213,18 @@ async function sendSms({ to, body }) {
 
   // Try primary provider
   let result;
-  if (provider === "itexmo") {
+  if (provider === "iprog") {
+    logger.info("[SMS] Sending via IProg", { to: normTo });
+    result = await sendViaIProg({ to: normTo, body });
+  } else if (provider === "itexmo") {
     logger.info("[SMS] Sending via Itexmo", { to: normTo });
     result = await sendViaItexmo({ to: normTo, body });
   } else if (provider === "twilio") {
     logger.info("[SMS] Sending via Twilio", { to: normTo });
     result = await sendViaTwilio({ to: normTo, body });
   } else {
-    logger.warn("[SMS] Unknown provider, defaulting to Itexmo", { provider });
-    result = await sendViaItexmo({ to: normTo, body });
+    logger.warn("[SMS] Unknown provider, defaulting to IProg", { provider });
+    result = await sendViaIProg({ to: normTo, body });
   }
 
   // If primary fails and we have fallback enabled, try alternate provider
@@ -168,17 +234,24 @@ async function sendSms({ to, body }) {
       primaryError: result.error 
     });
     
-    const fallbackProvider = provider === "itexmo" ? "twilio" : "itexmo";
-    logger.info("[SMS] Attempting fallback", { fallbackProvider });
+    // Try fallback providers in order: iprog -> itexmo -> twilio
+    const fallbackOrder = ["iprog", "itexmo", "twilio"].filter(p => p !== provider);
     
-    if (fallbackProvider === "twilio") {
-      result = await sendViaTwilio({ to: normTo, body });
-    } else {
-      result = await sendViaItexmo({ to: normTo, body });
-    }
-    
-    if (result.success) {
-      logger.info("[SMS] Fallback succeeded", { provider: fallbackProvider });
+    for (const fallbackProvider of fallbackOrder) {
+      logger.info("[SMS] Attempting fallback", { fallbackProvider });
+      
+      if (fallbackProvider === "iprog") {
+        result = await sendViaIProg({ to: normTo, body });
+      } else if (fallbackProvider === "itexmo") {
+        result = await sendViaItexmo({ to: normTo, body });
+      } else if (fallbackProvider === "twilio") {
+        result = await sendViaTwilio({ to: normTo, body });
+      }
+      
+      if (result.success) {
+        logger.info("[SMS] Fallback succeeded", { provider: fallbackProvider });
+        break;
+      }
     }
   }
 
