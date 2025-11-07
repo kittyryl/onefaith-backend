@@ -20,6 +20,7 @@ async function getTodaysShiftForUser(userId) {
 }
 
 // GET /api/reports/my-shift/summary (mounted under /api/reports/my-shift)
+// Returns ONLY today's shift summary for the current user
 router.get("/summary", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
@@ -84,18 +85,22 @@ router.get("/summary", async (req, res) => {
 router.get("/transactions", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
-    const { page = "1", size = "10", businessUnit, payment } = req.query;
+    const { page = "1", size = "10", businessUnit, payment, date } = req.query;
     const limit = Math.max(parseInt(String(size), 10) || 10, 1);
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
-    const shift = await getTodaysShiftForUser(userId);
+    const shift = await getShiftForUserOnDate(userId, date);
+
+    const dateCondition = date
+      ? `DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE($2::timestamp AT TIME ZONE 'Asia/Manila')`
+      : `DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')`;
 
     const whereParts = [
       "o.user_id = $1",
-      "DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')",
+      dateCondition,
     ];
-    const params = [userId];
+    const params = date ? [userId, date] : [userId];
     let pIndex = params.length + 1;
 
     if (shift && shift.id) {
@@ -255,7 +260,7 @@ router.get("/all-transactions", async (req, res) => {
   }
 });
 
-// GET /api/reports/my-shift/history - Staff sees ALL their shifts with transactions grouped by shift
+// GET /api/reports/my-shift/history - Staff sees ALL their shifts with transactions from that day only
 router.get("/history", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
@@ -264,7 +269,7 @@ router.get("/history", async (req, res) => {
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
-    // Get all shifts for this user with their transaction counts and totals
+    // Get all shifts for this user with their transaction counts and totals (only from that day)
     const sql = `
       SELECT 
         s.id as shift_id,
@@ -279,7 +284,9 @@ router.get("/history", async (req, res) => {
         COALESCE(SUM(CASE WHEN o.payment_method = 'Cash' THEN o.total ELSE 0 END), 0) AS cash_sales,
         COALESCE(SUM(CASE WHEN o.payment_method = 'Gcash' THEN o.total ELSE 0 END), 0) AS gcash_sales
       FROM shifts s
-      LEFT JOIN orders o ON o.shift_id = s.id AND o.user_id = s.user_id
+      LEFT JOIN orders o ON o.shift_id = s.id 
+        AND o.user_id = s.user_id
+        AND DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(s.start_time AT TIME ZONE 'Asia/Manila')
       LEFT JOIN order_items oi ON oi.order_id = o.id
       WHERE s.user_id = $1
       GROUP BY s.id, s.start_time, s.end_time, s.status
@@ -325,15 +332,15 @@ router.get("/history", async (req, res) => {
   }
 });
 
-// GET /api/reports/my-shift/shift-transactions/:shiftId - Get transactions for a specific shift
+// GET /api/reports/my-shift/shift-transactions/:shiftId - Get transactions for a specific shift on that day only
 router.get("/shift-transactions/:shiftId", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
     const { shiftId } = req.params;
 
-    // Verify the shift belongs to the user
+    // Verify the shift belongs to the user and get shift date
     const shiftCheck = await db.query(
-      "SELECT id FROM shifts WHERE id = $1 AND user_id = $2",
+      "SELECT id, start_time FROM shifts WHERE id = $1 AND user_id = $2",
       [shiftId, userId]
     );
 
@@ -341,7 +348,9 @@ router.get("/shift-transactions/:shiftId", async (req, res) => {
       return res.status(403).json({ message: "Access denied to this shift" });
     }
 
-    // Get all transactions for this shift
+    const shift = shiftCheck.rows[0];
+
+    // Get transactions for this shift that occurred on the same day as the shift start
     const sql = `
       SELECT 
         o.id AS order_id,
@@ -359,12 +368,14 @@ router.get("/shift-transactions/:shiftId", async (req, res) => {
         ) AS items
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.shift_id = $1 AND o.user_id = $2
+      WHERE o.shift_id = $1 
+        AND o.user_id = $2
+        AND DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE($3::timestamp AT TIME ZONE 'Asia/Manila')
       GROUP BY o.id
       ORDER BY o.created_at DESC;
     `;
 
-    const result = await db.query(sql, [shiftId, userId]);
+    const result = await db.query(sql, [shiftId, userId, shift.start_time]);
 
     res.json({
       transactions: result.rows
