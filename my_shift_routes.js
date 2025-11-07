@@ -149,4 +149,110 @@ router.get("/transactions", async (req, res) => {
   }
 });
 
+// GET /api/reports/my-shift/all-transactions - Manager-only: all staff shift transactions
+router.get("/all-transactions", async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const userRole = req.user.role;
+
+    // Only managers can access this endpoint
+    if (userRole !== 'manager') {
+      return res.status(403).json({ message: "Access denied. Managers only." });
+    }
+
+    const { page = "1", size = "50", staffId, businessUnit, payment, startDate, endDate } = req.query;
+    const limit = Math.max(parseInt(String(size), 10) || 50, 1);
+    const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
+    const offset = (pageNum - 1) * limit;
+
+    const whereParts = ["1=1"]; // Always true, we'll add conditions
+    const params = [];
+    let pIndex = 1;
+
+    // Filter by staff member
+    if (staffId) {
+      whereParts.push(`o.user_id = $${pIndex++}`);
+      params.push(staffId);
+    }
+
+    // Filter by date range
+    if (startDate) {
+      whereParts.push(`DATE(o.created_at AT TIME ZONE 'Asia/Manila') >= $${pIndex++}`);
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereParts.push(`DATE(o.created_at AT TIME ZONE 'Asia/Manila') <= $${pIndex++}`);
+      params.push(endDate);
+    }
+
+    // Filter by business unit
+    if (businessUnit && (businessUnit === "Coffee" || businessUnit === "Carwash")) {
+      whereParts.push(`EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id AND oi2.business_unit = $${pIndex++})`);
+      params.push(businessUnit);
+    }
+
+    // Filter by payment method
+    if (payment && (payment === "Cash" || payment === "Gcash")) {
+      whereParts.push(`o.payment_method = $${pIndex++}`);
+      params.push(payment);
+    }
+
+    const whereSQL = whereParts.join(" AND ");
+
+    // Count total for pagination
+    const countSQL = `
+      SELECT COUNT(DISTINCT o.id) as total
+      FROM orders o
+      WHERE ${whereSQL};
+    `;
+    const countResult = await db.query(countSQL, params);
+    const total = Number(countResult.rows[0]?.total || 0);
+
+    // Fetch transactions with user info
+    const sql = `
+      SELECT 
+        o.id AS order_id,
+        o.created_at,
+        o.total,
+        o.payment_method,
+        o.shift_id,
+        o.user_id,
+        u.username,
+        u.full_name,
+        s.start_time as shift_start,
+        s.end_time as shift_end,
+        json_agg(
+          json_build_object(
+            'business_unit', oi.business_unit,
+            'item_type', oi.item_type,
+            'quantity', oi.quantity,
+            'line_total', oi.line_total,
+            'details', oi.item_details
+          )
+        ) AS items
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN users u ON u.id = o.user_id
+      LEFT JOIN shifts s ON s.id = o.shift_id
+      WHERE ${whereSQL}
+      GROUP BY o.id, u.username, u.full_name, s.start_time, s.end_time
+      ORDER BY o.created_at DESC
+      LIMIT ${limit} OFFSET ${offset};
+    `;
+
+    const result = await db.query(sql, params);
+
+    res.json({
+      page: pageNum,
+      size: limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      transactions: result.rows,
+    });
+  } catch (err) {
+    console.error("[MyShift] all-transactions error:", err);
+    res.status(500).json({ message: "Failed to fetch shift transactions" });
+  }
+});
+
 module.exports = router;
