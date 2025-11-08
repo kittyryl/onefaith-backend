@@ -49,6 +49,16 @@ async function ensureTable() {
 router.get("/services", async (req, res) => {
   try {
     await ensureTable();
+    // Filter by date (default: today, Asia/Manila)
+    let date = req.query.date;
+    let dateFilter = '';
+    let params = [];
+    if (!date) {
+      dateFilter = "DATE(cs.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')";
+    } else {
+      dateFilter = "DATE(cs.created_at AT TIME ZONE 'Asia/Manila') = $1";
+      params.push(date);
+    }
     const result = await db.query(
       `SELECT 
         cs.order_id, 
@@ -82,11 +92,13 @@ router.get("/services", async (req, res) => {
        FROM carwash_services cs
        LEFT JOIN carwash_service_line_items li ON cs.id = li.service_ticket_id
        LEFT JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
+       WHERE ${dateFilter}
        GROUP BY cs.id, cs.order_id, cs.order_id_fk, cs.created_at, cs.status, cs.started_at, 
                 cs.completed_at, cs.cancelled_at, cs.vehicle_type, cs.plate_number, 
                 cs.customer_name, cs.customer_phone, cs.cancel_reason, cs.payment_method, 
                 cs.total, cs.items
-       ORDER BY cs.created_at DESC`
+       ORDER BY cs.created_at DESC`,
+      params
     );
 
     // Normalize shape

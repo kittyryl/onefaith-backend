@@ -122,4 +122,46 @@ router.delete("/:id", requireManager, async (req, res) => {
   }
 });
 
+// Inventory history endpoint
+router.get("/history", async (req, res) => {
+  try {
+    // Optional filters: product_id, date_from, date_to, movement_type
+    const { product_id, date_from, date_to, movement_type } = req.query;
+    let where = [];
+    let params = [];
+    let idx = 1;
+    if (product_id) {
+      where.push(`sm.product_id = $${idx++}`);
+      params.push(product_id);
+    }
+    if (movement_type) {
+      where.push(`sm.movement_type = $${idx++}`);
+      params.push(movement_type);
+    }
+    if (date_from) {
+      where.push(`sm.created_at >= $${idx++}`);
+      params.push(date_from);
+    }
+    if (date_to) {
+      where.push(`sm.created_at <= $${idx++}`);
+      params.push(date_to);
+    }
+    const whereSQL = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const sql = `
+      SELECT sm.id, sm.product_id, p.name AS product_name, sm.quantity, sm.movement_type, sm.user_id, u.username AS user_name, sm.created_at, sm.note
+      FROM stock_movements sm
+      LEFT JOIN products p ON sm.product_id = p.id
+      LEFT JOIN users u ON sm.user_id = u.id
+      ${whereSQL}
+      ORDER BY sm.created_at DESC
+      LIMIT 200
+    `;
+    const result = await db.query(sql, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching inventory history:", err);
+    res.status(500).json({ message: "Failed to fetch inventory history." });
+  }
+});
+
 module.exports = router;
