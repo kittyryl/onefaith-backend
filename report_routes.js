@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
-const { requireManager } = require("./auth_middleware");
+const { authenticateToken, requireManager } = require("./auth_middleware");
 
 // Sales totals by day per business unit (last 7 days)
-router.get("/sales-by-business-by-day", async (req, res) => {
+router.get("/sales-by-business-by-day", authenticateToken, requireManager, async (req, res) => {
   try {
     const query = `
             SELECT 

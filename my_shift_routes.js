@@ -2,21 +2,30 @@ const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-// Helper: resolve today's shift (active or ended) for the current user in Asia/Manila date
-async function getTodaysShiftForUser(userId) {
-  const q = `
-    SELECT s.*
-      FROM shifts s
-     WHERE s.user_id = $1
-       AND (
-         DATE(s.start_time AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')
-         OR (s.end_time IS NOT NULL AND DATE(s.end_time AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila'))
-       )
-     ORDER BY COALESCE(s.end_time, s.start_time) DESC
+// Helper: resolve the user's current shift: return the most recent active shift (regardless of date),
+// or today's ended shift if no active shift exists
+async function getCurrentOrTodaysShiftForUser(userId) {
+  // 1. Try to find an active shift (not ended) for this user
+  const activeQ = `
+    SELECT * FROM shifts
+     WHERE user_id = $1 AND status = 'active'
+     ORDER BY start_time DESC
      LIMIT 1;
   `;
-  const r = await db.query(q, [userId]);
-  return r.rowCount ? r.rows[0] : null;
+  const activeR = await db.query(activeQ, [userId]);
+  if (activeR.rowCount) return activeR.rows[0];
+
+  // 2. If no active shift, return today's ended shift (if any)
+  const todayQ = `
+    SELECT * FROM shifts
+     WHERE user_id = $1
+       AND status = 'ended'
+       AND DATE(start_time AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')
+     ORDER BY end_time DESC
+     LIMIT 1;
+  `;
+  const todayR = await db.query(todayQ, [userId]);
+  return todayR.rowCount ? todayR.rows[0] : null;
 }
 
 // GET /api/reports/my-shift/summary (mounted under /api/reports/my-shift)
@@ -25,8 +34,8 @@ router.get("/summary", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
     console.log("[MyShift] Summary request for userId:", userId);
-    const shift = await getTodaysShiftForUser(userId);
-    console.log("[MyShift] Today's shift:", shift);
+    const shift = await getCurrentOrTodaysShiftForUser(userId);
+    console.log("[MyShift] Current/Today's shift:", shift);
 
     const whereParts = [
       "o.user_id = $1",
@@ -56,9 +65,12 @@ router.get("/summary", async (req, res) => {
 
     const result = await db.query(sql, params);
     const row = result.rows[0] || {};
-    
+
     console.log("[MyShift] Query result:", row);
-    console.log("[MyShift] Sending response with orderCount:", Number(row.order_count));
+    console.log(
+      "[MyShift] Sending response with orderCount:",
+      Number(row.order_count)
+    );
 
     res.json({
       shift,
@@ -104,8 +116,13 @@ router.get("/transactions", async (req, res) => {
       whereParts.push(`o.shift_id = $${pIndex++}`);
       params.push(shift.id);
     }
-    if (businessUnit && (businessUnit === "Coffee" || businessUnit === "Carwash")) {
-      whereParts.push(`EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id AND oi2.business_unit = $${pIndex++})`);
+    if (
+      businessUnit &&
+      (businessUnit === "Coffee" || businessUnit === "Carwash")
+    ) {
+      whereParts.push(
+        `EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id AND oi2.business_unit = $${pIndex++})`
+      );
       params.push(businessUnit);
     }
     if (payment && (payment === "Cash" || payment === "Gcash")) {
@@ -158,11 +175,19 @@ router.get("/all-transactions", async (req, res) => {
     const userRole = req.user.role;
 
     // Only managers can access this endpoint
-    if (userRole !== 'manager') {
+    if (userRole !== "manager") {
       return res.status(403).json({ message: "Access denied. Managers only." });
     }
 
-    const { page = "1", size = "50", staffId, businessUnit, payment, startDate, endDate } = req.query;
+    const {
+      page = "1",
+      size = "50",
+      staffId,
+      businessUnit,
+      payment,
+      startDate,
+      endDate,
+    } = req.query;
     const limit = Math.min(Math.max(parseInt(String(size), 10) || 50, 1), 500); // Max 500 for managers
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
@@ -179,17 +204,26 @@ router.get("/all-transactions", async (req, res) => {
 
     // Filter by date range
     if (startDate) {
-      whereParts.push(`DATE(o.created_at AT TIME ZONE 'Asia/Manila') >= $${pIndex++}`);
+      whereParts.push(
+        `DATE(o.created_at AT TIME ZONE 'Asia/Manila') >= $${pIndex++}`
+      );
       params.push(startDate);
     }
     if (endDate) {
-      whereParts.push(`DATE(o.created_at AT TIME ZONE 'Asia/Manila') <= $${pIndex++}`);
+      whereParts.push(
+        `DATE(o.created_at AT TIME ZONE 'Asia/Manila') <= $${pIndex++}`
+      );
       params.push(endDate);
     }
 
     // Filter by business unit
-    if (businessUnit && (businessUnit === "Coffee" || businessUnit === "Carwash")) {
-      whereParts.push(`EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id AND oi2.business_unit = $${pIndex++})`);
+    if (
+      businessUnit &&
+      (businessUnit === "Coffee" || businessUnit === "Carwash")
+    ) {
+      whereParts.push(
+        `EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.id AND oi2.business_unit = $${pIndex++})`
+      );
       params.push(businessUnit);
     }
 
@@ -321,7 +355,7 @@ router.get("/history", async (req, res) => {
       size: limit,
       total,
       totalPages: Math.ceil(total / limit),
-      shifts: result.rows.map(row => ({
+      shifts: result.rows.map((row) => ({
         shift_id: row.shift_id,
         start_time: row.start_time,
         end_time: row.end_time,
@@ -338,8 +372,8 @@ router.get("/history", async (req, res) => {
             Cash: Number(row.cash_sales) || 0,
             Gcash: Number(row.gcash_sales) || 0,
           },
-        }
-      }))
+        },
+      })),
     });
   } catch (err) {
     console.error("[MyShift] history error:", err);
@@ -393,7 +427,7 @@ router.get("/shift-transactions/:shiftId", async (req, res) => {
     const result = await db.query(sql, [shiftId, userId, shift.start_time]);
 
     res.json({
-      transactions: result.rows
+      transactions: result.rows,
     });
   } catch (err) {
     console.error("[MyShift] shift-transactions error:", err);
