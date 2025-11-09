@@ -147,15 +147,15 @@ router.get("/history", async (req, res) => {
       params.push(date_to);
     }
     const whereSQL = where.length ? `WHERE ${where.join(" AND ")}` : "";
-      const query = `
+    const query = `
         SELECT sm.id, sm.ingredient_id, sm.movement_type, sm.quantity, sm.created_at, i.name as ingredient_name, u.username as user_name, sm.notes as note
         FROM stock_movements sm
         LEFT JOIN ingredients i ON sm.ingredient_id = i.id
         LEFT JOIN users u ON sm.user_id = u.id
         ORDER BY sm.created_at DESC
       `;
-      const { rows } = await db.query(query);
-      res.json(rows);
+    const { rows } = await db.query(query);
+    res.json(rows);
   } catch (err) {
     console.error("Error fetching inventory history:", err);
     res.status(500).json({ message: "Failed to fetch inventory history." });

@@ -163,7 +163,47 @@ router.post("/movement", async (req, res) => {
       .json({ message: "Only managers can perform AUDIT movements" });
   }
 
-  // Validate quantity based on movement type
+  // Validate quantity based on movement type and prevent negative stock
+  // Get current stock for this ingredient
+  let currentStock = 0;
+  try {
+    const stockResult = await db.query(
+      `WITH latest_audit AS (
+        SELECT DISTINCT ON (ingredient_id)
+          ingredient_id,
+          quantity AS audit_quantity,
+          created_at AS audit_time
+        FROM stock_movements
+        WHERE movement_type = 'AUDIT' AND ingredient_id = $1
+        ORDER BY ingredient_id, created_at DESC
+      ),
+      movements_after_audit AS (
+        SELECT 
+          sm.ingredient_id,
+          SUM(CASE WHEN sm.movement_type = 'IN' THEN sm.quantity WHEN sm.movement_type = 'OUT' THEN -sm.quantity ELSE 0 END) AS net_movement
+        FROM stock_movements sm
+        LEFT JOIN latest_audit la ON sm.ingredient_id = la.ingredient_id
+        WHERE sm.ingredient_id = $1 AND sm.movement_type IN ('IN', 'OUT')
+          AND (la.audit_time IS NULL OR sm.created_at > la.audit_time)
+        GROUP BY sm.ingredient_id
+      )
+      SELECT COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock
+      FROM ingredients i
+      LEFT JOIN latest_audit la ON i.id = la.ingredient_id
+      LEFT JOIN movements_after_audit maa ON i.id = maa.ingredient_id
+      WHERE i.id = $1`,
+      [ingredient_id]
+    );
+    if (stockResult.rows.length > 0) {
+      currentStock = Number(stockResult.rows[0].current_stock) || 0;
+    }
+  } catch (err) {
+    logger.error("Error checking current stock before movement", {
+      error: err.message,
+    });
+    return res.status(500).json({ message: "Failed to check current stock." });
+  }
+
   if (movement_type === "AUDIT") {
     if (isNaN(quantity) || quantity < 0) {
       logger.warn("Stock movement failed: Invalid AUDIT quantity", {
@@ -173,16 +213,46 @@ router.post("/movement", async (req, res) => {
         .status(400)
         .json({ message: "AUDIT quantity must be zero or positive" });
     }
-  } else {
-    // IN or OUT
+    // Prevent setting stock negative via AUDIT
+    if (quantity < 0) {
+      logger.warn("Stock movement failed: AUDIT would set negative stock", {
+        quantity,
+      });
+      return res.status(400).json({ message: "Cannot set stock below zero" });
+    }
+  } else if (movement_type === "OUT") {
     if (isNaN(quantity) || quantity <= 0) {
-      logger.warn("Stock movement failed: Invalid quantity for IN/OUT", {
+      logger.warn("Stock movement failed: Invalid quantity for OUT", {
         movement_type,
         quantity,
       });
       return res
         .status(400)
-        .json({ message: "Quantity for IN/OUT must be greater than zero" });
+        .json({ message: "Quantity for OUT must be greater than zero" });
+    }
+    if (currentStock - quantity < 0) {
+      logger.error("Stock movement BLOCKED: OUT would make stock negative", {
+        ingredient_id,
+        currentStock,
+        quantity,
+        user: req.user,
+      });
+      return res
+        .status(400)
+        .json({
+          message:
+            "Not enough stock. This operation would make stock negative. Current stock: " + currentStock + ", attempted OUT: " + quantity,
+        });
+    }
+  } else if (movement_type === "IN") {
+    if (isNaN(quantity) || quantity <= 0) {
+      logger.warn("Stock movement failed: Invalid quantity for IN", {
+        movement_type,
+        quantity,
+      });
+      return res
+        .status(400)
+        .json({ message: "Quantity for IN must be greater than zero" });
     }
   }
 
