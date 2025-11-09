@@ -28,6 +28,9 @@ async function getCurrentOrTodaysShiftForUser(userId) {
   return todayR.rowCount ? todayR.rows[0] : null;
 }
 
+// Alias for legacy code compatibility
+const getTodaysShiftForUser = getCurrentOrTodaysShiftForUser;
+
 // GET /api/reports/my-shift/summary (mounted under /api/reports/my-shift)
 // Returns ONLY today's shift summary for the current user
 router.get("/summary", async (req, res) => {

@@ -95,7 +95,7 @@ router.get("/history", authenticateToken, async (req, res) => {
     const userId = isManager ? req.query.userId : req.user.userId;
 
     let query = `
-      SELECT s.*, u.username, u.full_name 
+      SELECT s.*, u.username, u.full_name, u.role 
       FROM shifts s
       JOIN users u ON s.user_id = u.id
     `;

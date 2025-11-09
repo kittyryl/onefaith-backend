@@ -229,12 +229,13 @@ router.post("/movement", async (req, res) => {
         quantity,
         user: req.user,
       });
-      return res
-        .status(400)
-        .json({
-          message:
-            "Not enough stock. This operation would make stock negative. Current stock: " + currentStock + ", attempted OUT: " + quantity,
-        });
+      return res.status(400).json({
+        message:
+          "Not enough stock. This operation would make stock negative. Current stock: " +
+          currentStock +
+          ", attempted OUT: " +
+          quantity,
+      });
     }
   } else if (movement_type === "IN") {
     if (isNaN(quantity) || quantity <= 0) {

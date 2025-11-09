@@ -15,7 +15,7 @@ exports.up = function(knex) {
     table.text('cancel_reason').nullable();
     table.text('payment_method').nullable();
     table.decimal('total', 12, 2).notNullable().defaultTo(0);
-    table.jsonb('items').notNullable().defaultTo('[]'::jsonb);
+    table.jsonb('items').notNullable().defaultTo(knex.raw(`'[]'::jsonb`));
   });
 };
 
