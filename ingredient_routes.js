@@ -153,15 +153,7 @@ router.post("/movement", async (req, res) => {
       .json({ message: "Movement type must be IN, OUT, or AUDIT" });
   }
 
-  // Restrict AUDIT to manager role
-  if (movement_type === "AUDIT" && req.user?.role !== "manager") {
-    logger.warn("Stock movement failed: AUDIT restricted to manager", {
-      userId: req.user && (req.user.userId || req.user.id),
-    });
-    return res
-      .status(403)
-      .json({ message: "Only managers can perform AUDIT movements" });
-  }
+  // Allow both staff and manager to perform AUDIT
 
   // Validate quantity based on movement type and prevent negative stock
   // Get current stock for this ingredient
