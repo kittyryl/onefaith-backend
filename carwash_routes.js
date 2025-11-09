@@ -51,10 +51,11 @@ router.get("/services", async (req, res) => {
     await ensureTable();
     // Filter by date (default: today, Asia/Manila)
     let date = req.query.date;
-    let dateFilter = '';
+    let dateFilter = "";
     let params = [];
     if (!date) {
-      dateFilter = "DATE(cs.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')";
+      dateFilter =
+        "DATE(cs.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')";
     } else {
       dateFilter = "DATE(cs.created_at AT TIME ZONE 'Asia/Manila') = $1";
       params.push(date);

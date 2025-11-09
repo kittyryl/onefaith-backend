@@ -125,14 +125,14 @@ router.delete("/:id", requireManager, async (req, res) => {
 // Inventory history endpoint
 router.get("/history", async (req, res) => {
   try {
-    // Optional filters: product_id, date_from, date_to, movement_type
-    const { product_id, date_from, date_to, movement_type } = req.query;
+    // Optional filters: ingredient_id, date_from, date_to, movement_type
+    const { ingredient_id, date_from, date_to, movement_type } = req.query;
     let where = [];
     let params = [];
     let idx = 1;
-    if (product_id) {
-      where.push(`sm.product_id = $${idx++}`);
-      params.push(product_id);
+    if (ingredient_id) {
+      where.push(`sm.ingredient_id = $${idx++}`);
+      params.push(ingredient_id);
     }
     if (movement_type) {
       where.push(`sm.movement_type = $${idx++}`);
@@ -146,18 +146,15 @@ router.get("/history", async (req, res) => {
       where.push(`sm.created_at <= $${idx++}`);
       params.push(date_to);
     }
-    const whereSQL = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const sql = `
-      SELECT sm.id, sm.product_id, p.name AS product_name, sm.quantity, sm.movement_type, sm.user_id, u.username AS user_name, sm.created_at, sm.note
-      FROM stock_movements sm
-      LEFT JOIN products p ON sm.product_id = p.id
-      LEFT JOIN users u ON sm.user_id = u.id
-      ${whereSQL}
-      ORDER BY sm.created_at DESC
-      LIMIT 200
-    `;
-    const result = await db.query(sql, params);
-    res.json(result.rows);
+    const whereSQL = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      const query = `
+        SELECT sm.id, sm.ingredient_id, sm.change_type, sm.quantity, sm.created_at, i.name as ingredient_name
+        FROM stock_movements sm
+        LEFT JOIN ingredients i ON sm.ingredient_id = i.id
+        ORDER BY sm.created_at DESC
+      `;
+      const { rows } = await db.query(query);
+      res.json(rows);
   } catch (err) {
     console.error("Error fetching inventory history:", err);
     res.status(500).json({ message: "Failed to fetch inventory history." });

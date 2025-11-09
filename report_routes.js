@@ -4,9 +4,13 @@ const db = require("./db");
 const { authenticateToken, requireManager } = require("./auth_middleware");
 
 // Sales totals by day per business unit (last 7 days)
-router.get("/sales-by-business-by-day", authenticateToken, requireManager, async (req, res) => {
-  try {
-    const query = `
+router.get(
+  "/sales-by-business-by-day",
+  authenticateToken,
+  requireManager,
+  async (req, res) => {
+    try {
+      const query = `
             SELECT 
                 DATE(o.created_at) AS date,
                 -- Sum line totals ONLY for 'Coffee'
@@ -19,21 +23,22 @@ router.get("/sales-by-business-by-day", authenticateToken, requireManager, async
             GROUP BY DATE(o.created_at)
             ORDER BY date ASC;
         `;
-    const result = await db.query(query);
+      const result = await db.query(query);
 
-    const formattedResult = result.rows.map((row) => ({
-      date: row.date,
-      coffee_sales: Number(row.coffee_sales) || 0,
-      carwash_sales: Number(row.carwash_sales) || 0,
-    }));
-    res.status(200).json(formattedResult);
-  } catch (error) {
-    console.error("Error fetching sales by business by day report:", error);
-    res
-      .status(500)
-      .json({ message: "Failed to fetch sales by business data." });
+      const formattedResult = result.rows.map((row) => ({
+        date: row.date,
+        coffee_sales: Number(row.coffee_sales) || 0,
+        carwash_sales: Number(row.carwash_sales) || 0,
+      }));
+      res.status(200).json(formattedResult);
+    } catch (error) {
+      console.error("Error fetching sales by business by day report:", error);
+      res
+        .status(500)
+        .json({ message: "Failed to fetch sales by business data." });
+    }
   }
-});
+);
 
 // Sales transactions with filters (date range, business unit)
 router.get("/summary", async (req, res) => {
