@@ -148,7 +148,7 @@ router.get("/history", async (req, res) => {
     }
     const whereSQL = where.length ? `WHERE ${where.join(" AND ")}` : "";
       const query = `
-        SELECT sm.id, sm.ingredient_id, sm.change_type, sm.quantity, sm.created_at, i.name as ingredient_name
+        SELECT sm.id, sm.ingredient_id, sm.movement_type, sm.quantity, sm.created_at, i.name as ingredient_name
         FROM stock_movements sm
         LEFT JOIN ingredients i ON sm.ingredient_id = i.id
         ORDER BY sm.created_at DESC
