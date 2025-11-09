@@ -95,7 +95,9 @@ router.get("/summary", async (req, res) => {
 
 // GET /api/reports/my-shift/transactions (mounted under /api/reports/my-shift)
 // Returns ONLY today's transactions for the current user
-router.get("/transactions", async (req, res) => {
+const { authenticateToken } = require("./auth_middleware");
+
+router.get("/transactions", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
     const { page = "1", size = "10", businessUnit, payment } = req.query;
