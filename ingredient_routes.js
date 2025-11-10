@@ -207,44 +207,46 @@ router.post("/movement", async (req, res) => {
   // Validate notes length
   if (notes && notes.length > 500) {
     logger.warn("Stock movement failed: Notes too long");
-  router.post('/:id/archive', requireManager, async (req, res) => {
-    const id = req.params.id;
-    try {
-      const query = `UPDATE ingredients SET archived = true WHERE id = $1 RETURNING *;`;
-      const result = await db.query(query, [id]);
-      if (result.rowCount === 0) {
-        logger.warn('Ingredient archive failed: Not found', { id });
-        return res.status(404).json({ message: 'Ingredient not found.' });
-      }
-      logger.info('Ingredient archived successfully', { id });
-      res.status(200).json({ message: 'Ingredient archived successfully', ingredient: result.rows[0] });
-    } catch (error) {
-      logger.error('Error archiving ingredient', { error: error.message, stack: error.stack, id });
-      res.status(500).json({ message: 'Unable to archive the ingredient at this time.' });
-    }
-  });
-
-  // Unarchive ingredient (manager only)
-  router.post('/:id/unarchive', requireManager, async (req, res) => {
-    const id = req.params.id;
-    try {
-      const query = `UPDATE ingredients SET archived = false WHERE id = $1 RETURNING *;`;
-      const result = await db.query(query, [id]);
-      if (result.rowCount === 0) {
-        logger.warn('Ingredient unarchive failed: Not found', { id });
-        return res.status(404).json({ message: 'Ingredient not found.' });
-      }
-      logger.info('Ingredient unarchived successfully', { id });
-      res.status(200).json({ message: 'Ingredient unarchived successfully', ingredient: result.rows[0] });
-    } catch (error) {
-      logger.error('Error unarchiving ingredient', { error: error.message, stack: error.stack, id });
-      res.status(500).json({ message: 'Unable to unarchive the ingredient at this time.' });
-    }
-  });
     return res
       .status(400)
       .json({ message: "Notes must be 500 characters or less" });
   }
+
+// Archive ingredient (manager only)
+router.post('/:id/archive', requireManager, async (req, res) => {
+  const id = req.params.id;
+  try {
+    const query = `UPDATE ingredients SET archived = true WHERE id = $1 RETURNING *;`;
+    const result = await db.query(query, [id]);
+    if (result.rowCount === 0) {
+      logger.warn('Ingredient archive failed: Not found', { id });
+      return res.status(404).json({ message: 'Ingredient not found.' });
+    }
+    logger.info('Ingredient archived successfully', { id });
+    res.status(200).json({ message: 'Ingredient archived successfully', ingredient: result.rows[0] });
+  } catch (error) {
+    logger.error('Error archiving ingredient', { error: error.message, stack: error.stack, id });
+    res.status(500).json({ message: 'Unable to archive the ingredient at this time.' });
+  }
+});
+
+// Unarchive ingredient (manager only)
+router.post('/:id/unarchive', requireManager, async (req, res) => {
+  const id = req.params.id;
+  try {
+    const query = `UPDATE ingredients SET archived = false WHERE id = $1 RETURNING *;`;
+    const result = await db.query(query, [id]);
+    if (result.rowCount === 0) {
+      logger.warn('Ingredient unarchive failed: Not found', { id });
+      return res.status(404).json({ message: 'Ingredient not found.' });
+    }
+    logger.info('Ingredient unarchived successfully', { id });
+    res.status(200).json({ message: 'Ingredient unarchived successfully', ingredient: result.rows[0] });
+  } catch (error) {
+    logger.error('Error unarchiving ingredient', { error: error.message, stack: error.stack, id });
+    res.status(500).json({ message: 'Unable to unarchive the ingredient at this time.' });
+  }
+});
 
   try {
     // Ensure user_id column exists (idempotent)
