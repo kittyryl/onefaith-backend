@@ -1,107 +1,47 @@
-// Permanently delete an archived ingredient and all its history (manager only)
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const logger = require("./logger");
 const { requireManager } = require("./auth_middleware");
 
-router.delete("/:id/permanent", requireManager, async (req, res) => {
-  const id = req.params.id;
-  try {
-    // Only allow if ingredient is archived
-    const check = await db.query(
-      "SELECT archived FROM ingredients WHERE id = $1",
-      [id]
-    );
-    if (check.rowCount === 0) {
-      return res.status(404).json({ message: "Ingredient not found." });
-    }
-    if (!check.rows[0].archived) {
-      return res.status(400).json({
-        message: "Ingredient must be archived before permanent deletion.",
-      });
-    }
-    // Delete related stock_movements
-    await db.query("DELETE FROM stock_movements WHERE ingredient_id = $1", [
-      id,
-    ]);
-    // Delete related order_items
-    await db.query("DELETE FROM order_items WHERE ingredient_id = $1", [id]);
-    // Delete the ingredient itself
-    const result = await db.query(
-      "DELETE FROM ingredients WHERE id = $1 RETURNING id",
-      [id]
-    );
-    if (result.rowCount === 0) {
-      return res
-        .status(404)
-        .json({ message: "Ingredient not found or already deleted." });
-    }
-    logger.info("Ingredient permanently deleted with history", { id });
-    res
-      .status(200)
-      .json({ message: "Ingredient and all history deleted permanently." });
-  } catch (error) {
-    logger.error("Error permanently deleting ingredient", {
-      error: error.message,
-      stack: error.stack,
-      id,
-    });
-    res.status(500).json({
-      message: "Unable to permanently delete the ingredient at this time.",
-    });
-  }
-});
-
 // Get ingredients with calculated current stock
 router.get("/", async (req, res) => {
   try {
-    // Support ?archived=true|false (default: false)
-    let archived = false;
-    if (typeof req.query.archived === "string") {
-      archived = req.query.archived === "true";
-    }
     const query = `
-      WITH latest_audit AS (
-        SELECT DISTINCT ON (ingredient_id)
-          ingredient_id,
-          quantity AS audit_quantity,
-          created_at AS audit_time
-        FROM stock_movements
-        WHERE movement_type = 'AUDIT'
-        ORDER BY ingredient_id, created_at DESC
-      ),
-      movements_after_audit AS (
-        SELECT 
-          sm.ingredient_id,
-          SUM(
-            CASE 
-              WHEN sm.movement_type = 'IN' THEN sm.quantity 
-              WHEN sm.movement_type = 'OUT' THEN -sm.quantity
-              ELSE 0 
-            END
-          ) AS net_movement
-        FROM stock_movements sm
-        LEFT JOIN latest_audit la ON sm.ingredient_id = la.ingredient_id
-        WHERE sm.movement_type IN ('IN', 'OUT')
-          AND (la.audit_time IS NULL OR sm.created_at > la.audit_time)
-        GROUP BY sm.ingredient_id
-      )
-      SELECT 
-        i.id, i.name, i.category, i.unit_of_measure, i.required_stock, i.archived,
-        COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock,
-        NOT EXISTS (
-          SELECT 1 FROM stock_movements sm WHERE sm.ingredient_id = i.id
-          UNION
-          SELECT 1 FROM order_items oi WHERE oi.ingredient_id = i.id
-        ) AS deletable
-      FROM ingredients i
-      LEFT JOIN latest_audit la ON i.id = la.ingredient_id
-      LEFT JOIN movements_after_audit maa ON i.id = maa.ingredient_id
-      WHERE i.archived = $1
-      ORDER BY i.category, i.name;
-    `;
-    const result = await db.query(query, [archived]);
+            WITH latest_audit AS (
+                SELECT DISTINCT ON (ingredient_id) 
+                    ingredient_id,
+                    quantity AS audit_quantity,
+                    created_at AS audit_time
+                FROM stock_movements
+                WHERE movement_type = 'AUDIT'
+                ORDER BY ingredient_id, created_at DESC
+            ),
+            movements_after_audit AS (
+                SELECT 
+                    sm.ingredient_id,
+                    SUM(
+                        CASE 
+                            WHEN sm.movement_type = 'IN' THEN sm.quantity 
+                            WHEN sm.movement_type = 'OUT' THEN -sm.quantity
+                            ELSE 0 
+                        END
+                    ) AS net_movement
+                FROM stock_movements sm
+                LEFT JOIN latest_audit la ON sm.ingredient_id = la.ingredient_id
+                WHERE sm.movement_type IN ('IN', 'OUT')
+                  AND (la.audit_time IS NULL OR sm.created_at > la.audit_time)
+                GROUP BY sm.ingredient_id
+            )
+            SELECT 
+                i.id, i.name, i.category, i.unit_of_measure, i.required_stock,
+                COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock
+            FROM ingredients i
+            LEFT JOIN latest_audit la ON i.id = la.ingredient_id
+            LEFT JOIN movements_after_audit maa ON i.id = maa.ingredient_id
+            ORDER BY i.category, i.name;
+        `;
+    const result = await db.query(query);
     res.status(200).json(result.rows);
   } catch (error) {
     logger.error("Error calculating current stock", {
@@ -478,57 +418,3 @@ router.delete("/:id", requireManager, async (req, res) => {
 });
 
 module.exports = router;
-
-// Archive ingredient (manager only)
-router.post("/:id/archive", requireManager, async (req, res) => {
-  const id = req.params.id;
-  try {
-    const query = `UPDATE ingredients SET archived = true WHERE id = $1 RETURNING *;`;
-    const result = await db.query(query, [id]);
-    if (result.rowCount === 0) {
-      logger.warn("Ingredient archive failed: Not found", { id });
-      return res.status(404).json({ message: "Ingredient not found." });
-    }
-    logger.info("Ingredient archived successfully", { id });
-    res.status(200).json({
-      message: "Ingredient archived successfully",
-      ingredient: result.rows[0],
-    });
-  } catch (error) {
-    logger.error("Error archiving ingredient", {
-      error: error.message,
-      stack: error.stack,
-      id,
-    });
-    res
-      .status(500)
-      .json({ message: "Unable to archive the ingredient at this time." });
-  }
-});
-
-// Unarchive ingredient (manager only)
-router.post("/:id/unarchive", requireManager, async (req, res) => {
-  const id = req.params.id;
-  try {
-    const query = `UPDATE ingredients SET archived = false WHERE id = $1 RETURNING *;`;
-    const result = await db.query(query, [id]);
-    if (result.rowCount === 0) {
-      logger.warn("Ingredient unarchive failed: Not found", { id });
-      return res.status(404).json({ message: "Ingredient not found." });
-    }
-    logger.info("Ingredient unarchived successfully", { id });
-    res.status(200).json({
-      message: "Ingredient unarchived successfully",
-      ingredient: result.rows[0],
-    });
-  } catch (error) {
-    logger.error("Error unarchiving ingredient", {
-      error: error.message,
-      stack: error.stack,
-      id,
-    });
-    res
-      .status(500)
-      .json({ message: "Unable to unarchive the ingredient at this time." });
-  }
-});
