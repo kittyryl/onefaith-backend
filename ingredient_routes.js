@@ -1,3 +1,31 @@
+// Permanently delete an archived ingredient and all its history (manager only)
+router.delete("/:id/permanent", requireManager, async (req, res) => {
+  const id = req.params.id;
+  try {
+    // Only allow if ingredient is archived
+    const check = await db.query("SELECT archived FROM ingredients WHERE id = $1", [id]);
+    if (check.rowCount === 0) {
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+    if (!check.rows[0].archived) {
+      return res.status(400).json({ message: "Ingredient must be archived before permanent deletion." });
+    }
+    // Delete related stock_movements
+    await db.query("DELETE FROM stock_movements WHERE ingredient_id = $1", [id]);
+    // Delete related order_items
+    await db.query("DELETE FROM order_items WHERE ingredient_id = $1", [id]);
+    // Delete the ingredient itself
+    const result = await db.query("DELETE FROM ingredients WHERE id = $1 RETURNING id", [id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Ingredient not found or already deleted." });
+    }
+    logger.info("Ingredient permanently deleted with history", { id });
+    res.status(200).json({ message: "Ingredient and all history deleted permanently." });
+  } catch (error) {
+    logger.error("Error permanently deleting ingredient", { error: error.message, stack: error.stack, id });
+    res.status(500).json({ message: "Unable to permanently delete the ingredient at this time." });
+  }
+});
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
@@ -40,7 +68,12 @@ router.get("/", async (req, res) => {
       )
       SELECT 
         i.id, i.name, i.category, i.unit_of_measure, i.required_stock, i.archived,
-        COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock
+        COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock,
+        NOT EXISTS (
+          SELECT 1 FROM stock_movements sm WHERE sm.ingredient_id = i.id
+          UNION
+          SELECT 1 FROM order_items oi WHERE oi.ingredient_id = i.id
+        ) AS deletable
       FROM ingredients i
       LEFT JOIN latest_audit la ON i.id = la.ingredient_id
       LEFT JOIN movements_after_audit maa ON i.id = maa.ingredient_id
