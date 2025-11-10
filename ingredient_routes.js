@@ -1,5 +1,4 @@
 
-
 // Permanently delete an archived ingredient and all its history (manager only)
 router.delete("/:id/permanent", requireManager, async (req, res) => {
   const id = req.params.id;
