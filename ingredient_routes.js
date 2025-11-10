@@ -82,52 +82,7 @@ router.post("/", requireManager, async (req, res) => {
     });
     return res
       .status(400)
-      .json({ message: "Required stock must be a positive number" });
-  }
-
-  try {
-    // Prevent duplicate ingredient names (case-insensitive)
-    const dupCheck = await db.query(
-      "SELECT id FROM ingredients WHERE LOWER(name) = LOWER($1)",
-      [trimmedName]
-    );
-    if (dupCheck.rowCount > 0) {
-      logger.warn("Ingredient creation failed: Duplicate name", {
-        name: trimmedName,
-      });
-      return res.status(409).json({
-        message:
-          "An ingredient with this name already exists. Please use a different name.",
-      });
-    }
-
-    const query = `
-            INSERT INTO ingredients (name, category, unit_of_measure, required_stock)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, name;
-        `;
-    const values = [
-      trimmedName,
-      String(category).trim(),
-      unit_of_measure || null,
-      required_stock || 0,
-    ];
-    const result = await db.query(query, values);
-    logger.info("Ingredient created successfully", {
-      ingredient: result.rows[0],
-    });
-    res.status(201).json({
-      message: "Ingredient created successfully",
-      ingredient: result.rows[0],
-    });
-  } catch (error) {
-    logger.error("Error creating ingredient", {
-      error: error.message,
-      stack: error.stack,
-    });
-    res
-      .status(500)
-      .json({ message: "Unable to create the ingredient at this time." });
+      .json({ message: "Required stock must be a positive number." });
   }
 });
 
@@ -250,7 +205,6 @@ router.post("/movement", async (req, res) => {
   }
 
   // Validate notes length
-  });
   if (notes && notes.length > 500) {
     logger.warn("Stock movement failed: Notes too long");
   router.post('/:id/archive', requireManager, async (req, res) => {
