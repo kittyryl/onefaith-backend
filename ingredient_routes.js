@@ -1,37 +1,57 @@
-
 // Permanently delete an archived ingredient and all its history (manager only)
-router.delete("/:id/permanent", requireManager, async (req, res) => {
-  const id = req.params.id;
-  try {
-    // Only allow if ingredient is archived
-    const check = await db.query("SELECT archived FROM ingredients WHERE id = $1", [id]);
-    if (check.rowCount === 0) {
-      return res.status(404).json({ message: "Ingredient not found." });
-    }
-    if (!check.rows[0].archived) {
-      return res.status(400).json({ message: "Ingredient must be archived before permanent deletion." });
-    }
-    // Delete related stock_movements
-    await db.query("DELETE FROM stock_movements WHERE ingredient_id = $1", [id]);
-    // Delete related order_items
-    await db.query("DELETE FROM order_items WHERE ingredient_id = $1", [id]);
-    // Delete the ingredient itself
-    const result = await db.query("DELETE FROM ingredients WHERE id = $1 RETURNING id", [id]);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Ingredient not found or already deleted." });
-    }
-    logger.info("Ingredient permanently deleted with history", { id });
-    res.status(200).json({ message: "Ingredient and all history deleted permanently." });
-  } catch (error) {
-    logger.error("Error permanently deleting ingredient", { error: error.message, stack: error.stack, id });
-    res.status(500).json({ message: "Unable to permanently delete the ingredient at this time." });
-  }
-});
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const logger = require("./logger");
 const { requireManager } = require("./auth_middleware");
+
+router.delete("/:id/permanent", requireManager, async (req, res) => {
+  const id = req.params.id;
+  try {
+    // Only allow if ingredient is archived
+    const check = await db.query(
+      "SELECT archived FROM ingredients WHERE id = $1",
+      [id]
+    );
+    if (check.rowCount === 0) {
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+    if (!check.rows[0].archived) {
+      return res.status(400).json({
+        message: "Ingredient must be archived before permanent deletion.",
+      });
+    }
+    // Delete related stock_movements
+    await db.query("DELETE FROM stock_movements WHERE ingredient_id = $1", [
+      id,
+    ]);
+    // Delete related order_items
+    await db.query("DELETE FROM order_items WHERE ingredient_id = $1", [id]);
+    // Delete the ingredient itself
+    const result = await db.query(
+      "DELETE FROM ingredients WHERE id = $1 RETURNING id",
+      [id]
+    );
+    if (result.rowCount === 0) {
+      return res
+        .status(404)
+        .json({ message: "Ingredient not found or already deleted." });
+    }
+    logger.info("Ingredient permanently deleted with history", { id });
+    res
+      .status(200)
+      .json({ message: "Ingredient and all history deleted permanently." });
+  } catch (error) {
+    logger.error("Error permanently deleting ingredient", {
+      error: error.message,
+      stack: error.stack,
+      id,
+    });
+    res.status(500).json({
+      message: "Unable to permanently delete the ingredient at this time.",
+    });
+  }
+});
 
 // Get ingredients with calculated current stock
 router.get("/", async (req, res) => {
@@ -470,10 +490,19 @@ router.post("/:id/archive", requireManager, async (req, res) => {
       return res.status(404).json({ message: "Ingredient not found." });
     }
     logger.info("Ingredient archived successfully", { id });
-    res.status(200).json({ message: "Ingredient archived successfully", ingredient: result.rows[0] });
+    res.status(200).json({
+      message: "Ingredient archived successfully",
+      ingredient: result.rows[0],
+    });
   } catch (error) {
-    logger.error("Error archiving ingredient", { error: error.message, stack: error.stack, id });
-    res.status(500).json({ message: "Unable to archive the ingredient at this time." });
+    logger.error("Error archiving ingredient", {
+      error: error.message,
+      stack: error.stack,
+      id,
+    });
+    res
+      .status(500)
+      .json({ message: "Unable to archive the ingredient at this time." });
   }
 });
 
@@ -488,9 +517,18 @@ router.post("/:id/unarchive", requireManager, async (req, res) => {
       return res.status(404).json({ message: "Ingredient not found." });
     }
     logger.info("Ingredient unarchived successfully", { id });
-    res.status(200).json({ message: "Ingredient unarchived successfully", ingredient: result.rows[0] });
+    res.status(200).json({
+      message: "Ingredient unarchived successfully",
+      ingredient: result.rows[0],
+    });
   } catch (error) {
-    logger.error("Error unarchiving ingredient", { error: error.message, stack: error.stack, id });
-    res.status(500).json({ message: "Unable to unarchive the ingredient at this time." });
+    logger.error("Error unarchiving ingredient", {
+      error: error.message,
+      stack: error.stack,
+      id,
+    });
+    res
+      .status(500)
+      .json({ message: "Unable to unarchive the ingredient at this time." });
   }
 });
