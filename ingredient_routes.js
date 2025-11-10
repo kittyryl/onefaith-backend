@@ -33,15 +33,22 @@ router.get("/", async (req, res) => {
                   AND (la.audit_time IS NULL OR sm.created_at > la.audit_time)
                 GROUP BY sm.ingredient_id
             )
-            SELECT 
-                i.id, i.name, i.category, i.unit_of_measure, i.required_stock,
-                COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock
-            FROM ingredients i
-            LEFT JOIN latest_audit la ON i.id = la.ingredient_id
-            LEFT JOIN movements_after_audit maa ON i.id = maa.ingredient_id
-            ORDER BY i.category, i.name;
+      SELECT 
+        i.id, i.name, i.category, i.unit_of_measure, i.required_stock, i.archived,
+        COALESCE(la.audit_quantity, 0) + COALESCE(maa.net_movement, 0) AS current_stock
+      FROM ingredients i
+      LEFT JOIN latest_audit la ON i.id = la.ingredient_id
+      LEFT JOIN movements_after_audit maa ON i.id = maa.ingredient_id
+      "+( archivedFilter || "")+"
+      ORDER BY i.category, i.name;
         `;
-    const result = await db.query(query);
+  const archived = req.query.archived;
+  let archivedFilter = "";
+  if (archived === "true") archivedFilter = "WHERE i.archived = true";
+  else if (archived === "false") archivedFilter = "WHERE (i.archived IS NULL OR i.archived = false)";
+
+  const finalQuery = query.replace('"+( archivedFilter || "")+"', archivedFilter);
+  const result = await db.query(finalQuery);
     res.status(200).json(result.rows);
   } catch (error) {
     logger.error("Error calculating current stock", {
