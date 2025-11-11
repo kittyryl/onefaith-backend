@@ -272,7 +272,7 @@ router.get("/all-transactions", async (req, res) => {
       SELECT 
         COALESCE(SUM(o.total), 0) AS total_revenue,
         COALESCE(SUM(CASE WHEN oi.business_unit = 'Coffee' THEN oi.line_total ELSE 0 END), 0) AS coffee_item_revenue,
-        COALESCE(SUM(CASE WHEN oi.business_unit = 'Carwash' AND cs.status = 'completed' AND cs.cancelled_at IS NULL THEN oi.line_total ELSE 0 END), 0) AS carwash_item_revenue
+        COALESCE(SUM(CASE WHEN oi.business_unit = 'Carwash' AND (cs.id IS NULL OR (cs.status = 'completed' AND cs.cancelled_at IS NULL)) THEN oi.line_total ELSE 0 END), 0) AS carwash_item_revenue
       FROM orders o
       LEFT JOIN order_items oi ON oi.order_id = o.id
       LEFT JOIN carwash_services cs ON cs.order_id = o.id
