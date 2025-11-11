@@ -278,7 +278,13 @@ router.get("/all-transactions", async (req, res) => {
       WHERE ${whereSQL};
     `;
     const aggregateResult = await db.query(aggregateSQL, params);
-    const aggregatesRow = aggregateResult.rows[0] || {};
+  const aggregatesRow = aggregateResult.rows[0] || {};
+  // Calculate discount and revenue by items minus discount
+  const coffee = Number(aggregatesRow.coffee_item_revenue) || 0;
+  const carwash = Number(aggregatesRow.carwash_item_revenue) || 0;
+  const totalRevenue = Number(aggregatesRow.total_revenue) || 0;
+  const discount = (coffee + carwash) - totalRevenue;
+  const revenueByItemsMinusDiscount = (coffee + carwash) - discount;
 
     // Fetch transactions with user info
     const sql = `
@@ -320,9 +326,11 @@ router.get("/all-transactions", async (req, res) => {
       total,
       totalPages: Math.ceil(total / limit),
       aggregates: {
-        totalRevenue: Number(aggregatesRow.total_revenue) || 0,
-        coffeeItemRevenue: Number(aggregatesRow.coffee_item_revenue) || 0,
-        carwashItemRevenue: Number(aggregatesRow.carwash_item_revenue) || 0,
+        totalRevenue: totalRevenue,
+        coffeeItemRevenue: coffee,
+        carwashItemRevenue: carwash,
+        revenueByItemsMinusDiscount: revenueByItemsMinusDiscount,
+        discount: discount,
       },
       transactions: result.rows,
     });
