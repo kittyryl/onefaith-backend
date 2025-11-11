@@ -40,9 +40,11 @@ router.get("/summary", async (req, res) => {
     const shift = await getCurrentOrTodaysShiftForUser(userId);
     console.log("[MyShift] Current/Today's shift:", shift);
 
+
     const whereParts = [
       "o.user_id = $1",
       "DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')",
+      "(o.status = 'Completed' OR o.status = 'paid')"
     ];
     const params = [userId];
 
@@ -110,9 +112,11 @@ router.get("/transactions", authenticateToken, async (req, res) => {
 
     const shift = await getTodaysShiftForUser(userId);
 
+
     const whereParts = [
       "o.user_id = $1",
       "DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')",
+      "(o.status = 'Completed' OR o.status = 'paid')"
     ];
     const params = [userId];
     let pIndex = params.length + 1;
