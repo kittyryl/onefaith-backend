@@ -42,13 +42,17 @@ router.get("/", async (req, res) => {
       "+( archivedFilter || "")+"
       ORDER BY i.category, i.name;
         `;
-  const archived = req.query.archived;
-  let archivedFilter = "";
-  if (archived === "true") archivedFilter = "WHERE i.archived = true";
-  else if (archived === "false") archivedFilter = "WHERE (i.archived IS NULL OR i.archived = false)";
+    const archived = req.query.archived;
+    let archivedFilter = "";
+    if (archived === "true") archivedFilter = "WHERE i.archived = true";
+    else if (archived === "false")
+      archivedFilter = "WHERE (i.archived IS NULL OR i.archived = false)";
 
-  const finalQuery = query.replace('"+( archivedFilter || "")+"', archivedFilter);
-  const result = await db.query(finalQuery);
+    const finalQuery = query.replace(
+      '"+( archivedFilter || "")+"',
+      archivedFilter
+    );
+    const result = await db.query(finalQuery);
     res.status(200).json(result.rows);
   } catch (error) {
     logger.error("Error calculating current stock", {
@@ -427,49 +431,53 @@ router.delete("/:id", requireManager, async (req, res) => {
 module.exports = router;
 
 // Archive ingredient (manager only)
-router.post('/:id/archive', requireManager, async (req, res) => {
+router.post("/:id/archive", requireManager, async (req, res) => {
   const id = req.params.id;
   try {
     const result = await db.query(
-      'UPDATE ingredients SET archived = true WHERE id = $1 RETURNING id;',
+      "UPDATE ingredients SET archived = true WHERE id = $1 RETURNING id;",
       [id]
     );
     if (result.rowCount === 0) {
-      logger.warn('Ingredient archive failed: Not found', { id });
-      return res.status(404).json({ message: 'Ingredient not found.' });
+      logger.warn("Ingredient archive failed: Not found", { id });
+      return res.status(404).json({ message: "Ingredient not found." });
     }
-    logger.info('Ingredient archived successfully', { id });
-    res.status(200).json({ message: 'Ingredient archived successfully' });
+    logger.info("Ingredient archived successfully", { id });
+    res.status(200).json({ message: "Ingredient archived successfully" });
   } catch (error) {
-    logger.error('Error archiving ingredient', {
+    logger.error("Error archiving ingredient", {
       error: error.message,
       stack: error.stack,
       id,
     });
-    res.status(500).json({ message: 'Unable to archive the ingredient at this time.' });
+    res
+      .status(500)
+      .json({ message: "Unable to archive the ingredient at this time." });
   }
 });
 
 // Unarchive ingredient (manager only)
-router.post('/:id/unarchive', requireManager, async (req, res) => {
+router.post("/:id/unarchive", requireManager, async (req, res) => {
   const id = req.params.id;
   try {
     const result = await db.query(
-      'UPDATE ingredients SET archived = false WHERE id = $1 RETURNING id;',
+      "UPDATE ingredients SET archived = false WHERE id = $1 RETURNING id;",
       [id]
     );
     if (result.rowCount === 0) {
-      logger.warn('Ingredient unarchive failed: Not found', { id });
-      return res.status(404).json({ message: 'Ingredient not found.' });
+      logger.warn("Ingredient unarchive failed: Not found", { id });
+      return res.status(404).json({ message: "Ingredient not found." });
     }
-    logger.info('Ingredient unarchived successfully', { id });
-    res.status(200).json({ message: 'Ingredient unarchived successfully' });
+    logger.info("Ingredient unarchived successfully", { id });
+    res.status(200).json({ message: "Ingredient unarchived successfully" });
   } catch (error) {
-    logger.error('Error unarchiving ingredient', {
+    logger.error("Error unarchiving ingredient", {
       error: error.message,
       stack: error.stack,
       id,
     });
-    res.status(500).json({ message: 'Unable to unarchive the ingredient at this time.' });
+    res
+      .status(500)
+      .json({ message: "Unable to unarchive the ingredient at this time." });
   }
 });
