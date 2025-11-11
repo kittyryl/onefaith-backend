@@ -1,9 +1,14 @@
+// =============================
+// MY SHIFT ROUTES (Staff Shift Analytics API)
+// Provides endpoints for staff to view their shift summaries, transactions, and history
+// =============================
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-// Helper: resolve the user's current shift: return the most recent active shift (regardless of date),
-// or today's ended shift if no active shift exists
+// Helper: Get the user's current or today's shift
+// Returns the most recent active shift, or today's ended shift if no active shift exists
 async function getCurrentOrTodaysShiftForUser(userId) {
   // 1. Try to find an active shift (not ended) for this user
   const activeQ = `
@@ -31,8 +36,10 @@ async function getCurrentOrTodaysShiftForUser(userId) {
 // Alias for legacy code compatibility
 const getTodaysShiftForUser = getCurrentOrTodaysShiftForUser;
 
-// GET /api/reports/my-shift/summary (mounted under /api/reports/my-shift)
+// =============================
+// ENDPOINT: GET /api/reports/my-shift/summary
 // Returns ONLY today's shift summary for the current user
+// Includes order count, total sales, breakdown by business unit and payment method
 router.get("/summary", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
@@ -40,11 +47,10 @@ router.get("/summary", async (req, res) => {
     const shift = await getCurrentOrTodaysShiftForUser(userId);
     console.log("[MyShift] Current/Today's shift:", shift);
 
-
+    // Build WHERE clause for today's orders for this user and shift
     const whereParts = [
       "o.user_id = $1",
       "DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')",
-      "(o.status = 'Completed' OR o.status = 'paid')"
     ];
     const params = [userId];
 
@@ -55,6 +61,7 @@ router.get("/summary", async (req, res) => {
 
     const whereSQL = whereParts.join(" AND ");
 
+    // Query for summary stats
     const sql = `
       SELECT 
         COUNT(DISTINCT o.id) AS order_count,
@@ -77,6 +84,7 @@ router.get("/summary", async (req, res) => {
       Number(row.order_count)
     );
 
+    // Respond with summary object
     res.json({
       shift,
       totals: {
@@ -98,8 +106,10 @@ router.get("/summary", async (req, res) => {
   }
 });
 
-// GET /api/reports/my-shift/transactions (mounted under /api/reports/my-shift)
-// Returns ONLY today's transactions for the current user
+// =============================
+// ENDPOINT: GET /api/reports/my-shift/transactions
+// Returns ONLY today's transactions for the current user (paginated)
+// Supports filtering by business unit and payment method
 const { authenticateToken } = require("./auth_middleware");
 
 router.get("/transactions", authenticateToken, async (req, res) => {
@@ -112,11 +122,10 @@ router.get("/transactions", authenticateToken, async (req, res) => {
 
     const shift = await getTodaysShiftForUser(userId);
 
-
+    // Build WHERE clause for today's orders for this user and shift
     const whereParts = [
       "o.user_id = $1",
       "DATE(o.created_at AT TIME ZONE 'Asia/Manila') = DATE(NOW() AT TIME ZONE 'Asia/Manila')",
-      "(o.status = 'Completed' OR o.status = 'paid')"
     ];
     const params = [userId];
     let pIndex = params.length + 1;
@@ -141,6 +150,7 @@ router.get("/transactions", authenticateToken, async (req, res) => {
 
     const whereSQL = whereParts.join(" AND ");
 
+    // Query for paginated transactions
     const sql = `
       SELECT 
         o.id AS order_id,
@@ -177,7 +187,10 @@ router.get("/transactions", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/reports/my-shift/all-transactions - Manager-only: all staff shift transactions
+// =============================
+// ENDPOINT: GET /api/reports/my-shift/all-transactions
+// Manager-only: Returns all staff shift transactions (paginated, with filters)
+// Supports filtering by staff, business unit, payment, date range
 router.get("/all-transactions", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
@@ -201,6 +214,7 @@ router.get("/all-transactions", async (req, res) => {
     const pageNum = Math.max(parseInt(String(page), 10) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
+    // Build WHERE clause for filters
     const whereParts = ["1=1"]; // Always true, we'll add conditions
     const params = [];
     let pIndex = 1;
@@ -318,7 +332,9 @@ router.get("/all-transactions", async (req, res) => {
   }
 });
 
-// GET /api/reports/my-shift/history - Staff sees ALL their shifts with transactions from that day only
+// =============================
+// ENDPOINT: GET /api/reports/my-shift/history
+// Staff sees ALL their shifts with transactions from that day only (paginated)
 router.get("/history", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
@@ -390,7 +406,9 @@ router.get("/history", async (req, res) => {
   }
 });
 
-// GET /api/reports/my-shift/shift-transactions/:shiftId - Get transactions for a specific shift on that day only
+// =============================
+// ENDPOINT: GET /api/reports/my-shift/shift-transactions/:shiftId
+// Get transactions for a specific shift on that day only
 router.get("/shift-transactions/:shiftId", async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
@@ -444,4 +462,5 @@ router.get("/shift-transactions/:shiftId", async (req, res) => {
   }
 });
 
+// Export the router for use in the main server
 module.exports = router;

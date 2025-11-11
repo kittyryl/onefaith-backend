@@ -1,8 +1,15 @@
+// =============================
+// SHIFT ROUTES (Shift Management API)
+// Handles starting, ending, and viewing shifts for users
+// =============================
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const { authenticateToken } = require("./auth_middleware");
 
+// =============================
+// ENDPOINT: GET /api/shifts/current
 // Get current active shift for logged-in user
 router.get("/current", authenticateToken, async (req, res) => {
   try {
@@ -27,7 +34,9 @@ router.get("/current", authenticateToken, async (req, res) => {
   }
 });
 
-// Start a new shift
+// =============================
+// ENDPOINT: POST /api/shifts/start
+// Start a new shift for the logged-in user
 router.post("/start", authenticateToken, async (req, res) => {
   try {
     // Check if user already has an active shift
@@ -61,7 +70,9 @@ router.post("/start", authenticateToken, async (req, res) => {
   }
 });
 
-// End current shift
+// =============================
+// ENDPOINT: POST /api/shifts/end
+// End the current active shift for the logged-in user
 router.post("/end", authenticateToken, async (req, res) => {
   const { notes } = req.body;
 
@@ -88,6 +99,8 @@ router.post("/end", authenticateToken, async (req, res) => {
   }
 });
 
+// =============================
+// ENDPOINT: GET /api/shifts/history
 // Get shift history (for current user or all if manager)
 router.get("/history", authenticateToken, async (req, res) => {
   try {
@@ -116,4 +129,5 @@ router.get("/history", authenticateToken, async (req, res) => {
   }
 });
 
+// Export the router for use in the main server
 module.exports = router;

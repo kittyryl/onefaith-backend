@@ -1,15 +1,25 @@
+// =============================
+// REPORT ROUTES (Analytics API)
+// Provides endpoints for sales, carwash, and coffee analytics
+// =============================
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const { authenticateToken, requireManager } = require("./auth_middleware");
 
-// Sales totals by day per business unit (last 7 days)
+// =============================
+// SALES ANALYTICS ENDPOINTS
+// =============================
+
+// Get sales totals by day for each business unit (Coffee, Carwash) for the last 7 days
 router.get(
   "/sales-by-business-by-day",
   authenticateToken,
   requireManager,
   async (req, res) => {
     try {
+      // Query sums sales for each business unit per day
       const query = `
             SELECT 
                 DATE(o.created_at) AS date,
@@ -20,12 +30,12 @@ router.get(
             FROM orders o
             JOIN order_items oi ON o.id = oi.order_id
             WHERE o.created_at >= NOW() - INTERVAL '7 days'
-              AND (o.status = 'Completed' OR o.status = 'paid')
             GROUP BY DATE(o.created_at)
             ORDER BY date ASC;
         `;
       const result = await db.query(query);
 
+      // Format result for frontend
       const formattedResult = result.rows.map((row) => ({
         date: row.date,
         coffee_sales: Number(row.coffee_sales) || 0,
@@ -41,32 +51,34 @@ router.get(
   }
 );
 
-// Sales transactions with filters (date range, business unit)
+// Get sales transactions summary, with optional filters for date range and business unit
 router.get("/summary", async (req, res) => {
+  // Parse query params
   const { startDate, endDate, businessUnit } = req.query;
 
   let queryParams = [];
   let whereClauses = [];
   let paramIndex = 1;
 
+  // Filter by start date if provided
   if (startDate) {
     whereClauses.push(`o.created_at >= $${paramIndex++}`);
     queryParams.push(startDate);
   }
 
+  // Filter by end date if provided (exclusive, next day)
   if (endDate) {
     const nextDay = new Date(endDate);
     nextDay.setDate(nextDay.getDate() + 1);
-
     whereClauses.push(`o.created_at < $${paramIndex++}`);
     queryParams.push(nextDay.toISOString().split("T")[0]);
   }
 
-  // Only include completed or paid orders
-  whereClauses.push("(o.status = 'Completed' OR o.status = 'paid')");
+  // Build WHERE clause
   const whereString =
     whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
+  // Optionally filter by business unit
   let havingString = "";
   if (businessUnit && businessUnit !== "all") {
     havingString = `HAVING $${paramIndex++} = ANY(array_agg(oi.business_unit))`;
@@ -74,6 +86,7 @@ router.get("/summary", async (req, res) => {
   }
 
   try {
+    // Query returns summary of each order and its items
     const query = `
             SELECT 
                 o.id AS order_id,
@@ -108,10 +121,11 @@ router.get("/summary", async (req, res) => {
   }
 });
 
-// ===== CARWASH ANALYTICS ENDPOINTS =====
+// =============================
+// CARWASH ANALYTICS ENDPOINTS
+// =============================
 
-// Popular carwash services (completed only)
-// Manager-only analytics
+// Get most popular carwash services (excluding cancelled), for manager analytics
 router.get("/carwash/popular-services", requireManager, async (req, res) => {
   try {
     const query = `
@@ -125,7 +139,7 @@ router.get("/carwash/popular-services", requireManager, async (req, res) => {
       FROM carwash_service_line_items li
       JOIN carwash_services cs ON li.service_ticket_id = cs.id
       JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
-  WHERE (cs.status = 'completed' OR cs.status = 'paid')
+      WHERE cs.status != 'cancelled'
       GROUP BY cat.id, cat.name, cat.category
       ORDER BY times_ordered DESC
       LIMIT 10;
@@ -138,7 +152,7 @@ router.get("/carwash/popular-services", requireManager, async (req, res) => {
   }
 });
 
-// Cancellation analysis
+// Get cancellation stats for carwash services (for manager analytics)
 router.get("/carwash/cancellations", requireManager, async (req, res) => {
   try {
     const query = `
@@ -162,7 +176,7 @@ router.get("/carwash/cancellations", requireManager, async (req, res) => {
   }
 });
 
-// Services by vehicle type
+// Get carwash services breakdown by vehicle type (excluding cancelled)
 router.get("/carwash/services-by-vehicle", requireManager, async (req, res) => {
   try {
     const query = `
@@ -175,7 +189,7 @@ router.get("/carwash/services-by-vehicle", requireManager, async (req, res) => {
       JOIN carwash_services cs ON li.service_ticket_id = cs.id
       JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
       WHERE li.vehicle_type IS NOT NULL
-  AND (cs.status = 'completed' OR cs.status = 'paid')
+        AND cs.status != 'cancelled'
       GROUP BY li.vehicle_type, cat.name
       ORDER BY li.vehicle_type, times_ordered DESC;
     `;
@@ -187,7 +201,7 @@ router.get("/carwash/services-by-vehicle", requireManager, async (req, res) => {
   }
 });
 
-// Carwash revenue trends (last 30 days, completed only)
+// Get carwash revenue trends for the last 30 days (excluding cancelled)
 router.get("/carwash/revenue-trends", requireManager, async (req, res) => {
   try {
     const query = `
@@ -197,12 +211,12 @@ router.get("/carwash/revenue-trends", requireManager, async (req, res) => {
       FROM carwash_service_line_items li
       JOIN carwash_services cs ON li.service_ticket_id = cs.id
       WHERE cs.created_at >= NOW() - INTERVAL '30 days'
-  AND (cs.status = 'completed' OR cs.status = 'paid')
+        AND cs.status != 'cancelled'
       GROUP BY DATE(cs.created_at)
       ORDER BY date ASC;
     `;
     const result = await db.query(query);
-    // normalize numbers
+    // Normalize numbers for frontend
     const rows = result.rows.map((r) => ({
       date: r.date,
       revenue: Number(r.revenue) || 0,
@@ -214,9 +228,11 @@ router.get("/carwash/revenue-trends", requireManager, async (req, res) => {
   }
 });
 
-// ===== COFFEE ANALYTICS ENDPOINTS =====
+// =============================
+// COFFEE ANALYTICS ENDPOINTS
+// =============================
 
-// Top Coffee products
+// Get top-selling coffee products (by revenue)
 router.get("/coffee/top-products", requireManager, async (req, res) => {
   try {
     const query = `
@@ -233,6 +249,7 @@ router.get("/coffee/top-products", requireManager, async (req, res) => {
       LIMIT 10;
     `;
     const result = await db.query(query);
+    // Format numbers for frontend
     const rows = result.rows.map((r) => ({
       product_name: r.product_name,
       category: r.category,
@@ -246,7 +263,7 @@ router.get("/coffee/top-products", requireManager, async (req, res) => {
   }
 });
 
-// Coffee revenue trends (last 30 days)
+// Get coffee revenue trends for the last 30 days
 router.get("/coffee/revenue-trends", requireManager, async (req, res) => {
   try {
     const query = `
@@ -257,11 +274,11 @@ router.get("/coffee/revenue-trends", requireManager, async (req, res) => {
       JOIN order_items oi ON o.id = oi.order_id
       WHERE oi.business_unit = 'Coffee'
         AND o.created_at >= NOW() - INTERVAL '30 days'
-        AND (o.status = 'Completed' OR o.status = 'paid')
       GROUP BY DATE(o.created_at)
       ORDER BY date ASC;
     `;
     const result = await db.query(query);
+    // Format numbers for frontend
     const rows = result.rows.map((r) => ({
       date: r.date,
       revenue: Number(r.revenue) || 0,
@@ -273,4 +290,5 @@ router.get("/coffee/revenue-trends", requireManager, async (req, res) => {
   }
 });
 
+// Export the router for use in the main server
 module.exports = router;

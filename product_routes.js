@@ -1,9 +1,16 @@
+// =============================
+// PRODUCT ROUTES (Product Management API)
+// Handles CRUD operations for products (Coffee, etc.)
+// =============================
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const { requireManager } = require("./auth_middleware");
 
-// Get products
+// =============================
+// ENDPOINT: GET /api/products/
+// Get all products (Coffee, etc.)
 router.get("/", async (req, res) => {
   try {
     const query = `
@@ -19,11 +26,13 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Create product
-// Create product (manager only)
+// =============================
+// ENDPOINT: POST /api/products/
+// Create a new product (manager only)
 router.post("/", requireManager, async (req, res) => {
   const { name, category, price, needs_temp, image_url } = req.body;
 
+  // Validate required fields
   if (!name || !category || price === undefined) {
     return res
       .status(400)
@@ -55,12 +64,14 @@ router.post("/", requireManager, async (req, res) => {
   }
 });
 
-// Update product
-// Update product (manager only)
+// =============================
+// ENDPOINT: PUT /api/products/:id
+// Update a product (manager only)
 router.put("/:id", requireManager, async (req, res) => {
   const id = req.params.id; // Get ID from URL parameter
   const { name, category, price, needs_temp, image_url } = req.body;
 
+  // Validate required fields
   if (!name || !category || price === undefined) {
     return res
       .status(400)
@@ -102,8 +113,9 @@ router.put("/:id", requireManager, async (req, res) => {
   }
 });
 
-// Delete product
-// Delete product (manager only)
+// =============================
+// ENDPOINT: DELETE /api/products/:id
+// Delete a product (manager only)
 router.delete("/:id", requireManager, async (req, res) => {
   const id = req.params.id;
 
@@ -122,7 +134,9 @@ router.delete("/:id", requireManager, async (req, res) => {
   }
 });
 
-// Inventory history endpoint
+// =============================
+// ENDPOINT: GET /api/products/history
+// Inventory history endpoint (for stock movements)
 router.get("/history", async (req, res) => {
   try {
     // Optional filters: ingredient_id, date_from, date_to, movement_type
@@ -162,4 +176,5 @@ router.get("/history", async (req, res) => {
   }
 });
 
+// Export the router for use in the main server
 module.exports = router;

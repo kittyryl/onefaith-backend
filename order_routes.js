@@ -1,13 +1,22 @@
+// =============================
+// ORDER ROUTES (Order Management API)
+// Handles creation and validation of orders for Coffee and Carwash
+// =============================
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const logger = require("./logger");
 
-// Save a completed order
+// =============================
+// ENDPOINT: POST /api/orders/
+// Save a completed order (Coffee or Carwash)
+// Validates all order fields, links to user and shift, and inserts order/items into DB
+// Also upserts carwash ticket if businessUnit is Carwash
 router.post("/", async (req, res) => {
   const { orderDetails, businessUnit } = req.body;
 
-  // Validation
+  // Validation: order details must be present
   if (!orderDetails) {
     logger.warn("Order creation failed: Missing orderDetails");
     return res.status(400).json({ message: "Order details are required" });
@@ -109,6 +118,7 @@ router.post("/", async (req, res) => {
     }
   }
 
+  // Use a DB transaction for order + items
   const client = await db.pool.connect();
 
   try {
@@ -135,7 +145,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Insert order
+    // Insert order into DB
     const orderInsertQuery = `
       INSERT INTO orders (
         subtotal, discount, total, payment_method,
@@ -162,7 +172,7 @@ router.post("/", async (req, res) => {
     const orderResult = await client.query(orderInsertQuery, orderValues);
     const orderId = orderResult.rows[0].id;
 
-    // Insert items
+    // Insert each item in the order
     const itemInsertQuery = `
       INSERT INTO order_items (
         order_id, product_id, business_unit, item_type, unit_price, quantity, line_total, item_details
@@ -197,9 +207,9 @@ router.post("/", async (req, res) => {
       await client.query(itemInsertQuery, itemValues);
     }
 
-    // Carwash: upsert ticket payment/total/items without changing status
+    // If Carwash, upsert ticket payment/total/items (do not change status)
     if (businessUnit === "Carwash") {
-      // Ensure table exists
+      // Ensure carwash_services table and columns exist (idempotent)
       const createTableSQL = `
         CREATE TABLE IF NOT EXISTS carwash_services (
           id SERIAL PRIMARY KEY,
@@ -238,7 +248,7 @@ router.post("/", async (req, res) => {
         "ALTER TABLE carwash_services ADD COLUMN IF NOT EXISTS cancel_reason TEXT NULL"
       );
 
-      // Map to carwash item shape
+      // Map to carwash item shape for DB
       const serviceItems = items.map((it) => ({
         service_name: it.serviceName || it.name || "",
         vehicle: (
@@ -274,6 +284,7 @@ router.post("/", async (req, res) => {
         });
       }
 
+      // Upsert carwash ticket
       const upsertSQL = `
         INSERT INTO carwash_services (order_id, payment_method, total, items)
         VALUES ($1, $2, $3, $4::jsonb)
@@ -338,4 +349,5 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Export the router for use in the main server
 module.exports = router;

@@ -1,10 +1,16 @@
+// =============================
+// SETUP ROUTES (One-time Setup API)
+// Handles creation of tables and setup tasks (manager only, protected)
+// =============================
+
 const express = require("express");
 const router = express.Router();
 const pool = require("./db");
 const { authenticateToken, requireManager } = require("./auth_middleware");
 
-// Setup endpoint to create shifts table
-// Extra guard: refuse if not explicitly enabled via env
+// =============================
+// ENDPOINT: POST /api/setup/create-shifts-table
+// Setup endpoint to create shifts table (manager only, protected by env)
 router.post(
   "/create-shifts-table",
   authenticateToken,
@@ -32,7 +38,7 @@ router.post(
         });
       }
 
-      // Create shifts table
+      // Create shifts table and indexes
       await pool.query(`
       CREATE TABLE shifts (
         id SERIAL PRIMARY KEY,
@@ -51,7 +57,7 @@ router.post(
 
       res.json({
         success: true,
-        message: "✅ Shifts table created successfully!",
+        message: "\u2705 Shifts table created successfully!",
       });
     } catch (error) {
       console.error("Error creating shifts table:", error);
@@ -63,4 +69,5 @@ router.post(
   }
 );
 
+// Export the router for use in the main server
 module.exports = router;
