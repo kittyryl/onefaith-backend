@@ -17,7 +17,7 @@ SELECT
 FROM carwash_service_line_items li
 JOIN carwash_services cs ON li.service_ticket_id = cs.id
 JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
-WHERE cs.status != 'cancelled'  -- Exclude cancellations
+WHERE cs.status = 'completed'  -- Only completed services
 GROUP BY cat.id, cat.name, cat.category
 ORDER BY times_ordered DESC
 LIMIT 10;
@@ -35,7 +35,7 @@ SELECT
   SUM(CASE WHEN cs.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
   SUM(CASE WHEN cs.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
   SUM(li.line_total) AS total_potential_revenue,
-  SUM(CASE WHEN cs.status != 'cancelled' THEN li.line_total ELSE 0 END) AS actual_revenue
+  SUM(CASE WHEN cs.status = 'completed' THEN li.line_total ELSE 0 END) AS actual_revenue
 FROM carwash_service_line_items li
 JOIN carwash_services cs ON li.service_ticket_id = cs.id
 JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
@@ -58,7 +58,7 @@ FROM carwash_service_line_items li
 JOIN carwash_services cs ON li.service_ticket_id = cs.id
 JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
 WHERE li.vehicle_type IS NOT NULL
-  AND cs.status != 'cancelled'  -- Exclude cancellations
+  AND cs.status = 'completed'  -- Only completed services
 GROUP BY li.vehicle_type, cat.name
 ORDER BY li.vehicle_type, times_ordered DESC;
 ```
@@ -95,7 +95,7 @@ FROM carwash_service_line_items li
 JOIN carwash_services cs ON li.service_ticket_id = cs.id
 JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
 WHERE cs.created_at >= NOW() - INTERVAL '30 days'
-  AND cs.status != 'cancelled'  -- Exclude cancellations
+  AND cs.status = 'completed'  -- Only completed services
 GROUP BY DATE(cs.created_at), cat.name
 ORDER BY date DESC, daily_revenue DESC;
 ```

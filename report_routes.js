@@ -20,6 +20,7 @@ router.get(
             FROM orders o
             JOIN order_items oi ON o.id = oi.order_id
             WHERE o.created_at >= NOW() - INTERVAL '7 days'
+              AND (o.status = 'completed' OR o.status = 'paid')
             GROUP BY DATE(o.created_at)
             ORDER BY date ASC;
         `;
@@ -61,6 +62,8 @@ router.get("/summary", async (req, res) => {
     queryParams.push(nextDay.toISOString().split("T")[0]);
   }
 
+  // Only include completed or paid orders
+  whereClauses.push("(o.status = 'completed' OR o.status = 'paid')");
   const whereString =
     whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
@@ -254,6 +257,7 @@ router.get("/coffee/revenue-trends", requireManager, async (req, res) => {
       JOIN order_items oi ON o.id = oi.order_id
       WHERE oi.business_unit = 'Coffee'
         AND o.created_at >= NOW() - INTERVAL '30 days'
+        AND (o.status = 'completed' OR o.status = 'paid')
       GROUP BY DATE(o.created_at)
       ORDER BY date ASC;
     `;
