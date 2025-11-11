@@ -272,20 +272,13 @@ router.get("/all-transactions", async (req, res) => {
       SELECT 
         COALESCE(SUM(o.total), 0) AS total_revenue,
         COALESCE(SUM(CASE WHEN oi.business_unit = 'Coffee' THEN oi.line_total ELSE 0 END), 0) AS coffee_item_revenue,
-        COALESCE(SUM(CASE WHEN oi.business_unit = 'Carwash' AND (cs.id IS NULL OR (cs.status = 'completed' AND cs.cancelled_at IS NULL)) THEN oi.line_total ELSE 0 END), 0) AS carwash_item_revenue
+        COALESCE(SUM(CASE WHEN oi.business_unit = 'Carwash' THEN oi.line_total ELSE 0 END), 0) AS carwash_item_revenue
       FROM orders o
       LEFT JOIN order_items oi ON oi.order_id = o.id
-      LEFT JOIN carwash_services cs ON cs.order_id = o.id
       WHERE ${whereSQL};
     `;
     const aggregateResult = await db.query(aggregateSQL, params);
-  const aggregatesRow = aggregateResult.rows[0] || {};
-  // Calculate discount and revenue by items minus discount
-  const coffee = Number(aggregatesRow.coffee_item_revenue) || 0;
-  const carwash = Number(aggregatesRow.carwash_item_revenue) || 0;
-  const totalRevenue = Number(aggregatesRow.total_revenue) || 0;
-  const discount = (coffee + carwash) - totalRevenue;
-  const revenueByItemsMinusDiscount = (coffee + carwash) - discount;
+    const aggregatesRow = aggregateResult.rows[0] || {};
 
     // Fetch transactions with user info
     const sql = `
@@ -327,11 +320,9 @@ router.get("/all-transactions", async (req, res) => {
       total,
       totalPages: Math.ceil(total / limit),
       aggregates: {
-        totalRevenue: totalRevenue,
-        coffeeItemRevenue: coffee,
-        carwashItemRevenue: carwash,
-        revenueByItemsMinusDiscount: revenueByItemsMinusDiscount,
-        discount: discount,
+        totalRevenue: Number(aggregatesRow.total_revenue) || 0,
+        coffeeItemRevenue: Number(aggregatesRow.coffee_item_revenue) || 0,
+        carwashItemRevenue: Number(aggregatesRow.carwash_item_revenue) || 0,
       },
       transactions: result.rows,
     });
