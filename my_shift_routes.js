@@ -270,7 +270,7 @@ router.get("/all-transactions", async (req, res) => {
     // Aggregates for all matching (not just current page)
     const aggregateSQL = `
       SELECT 
-        COALESCE(SUM(DISTINCT o.total), 0) AS total_revenue,
+        COALESCE(SUM(o.total), 0) AS total_revenue,
         COALESCE(SUM(CASE WHEN oi.business_unit = 'Coffee' THEN oi.line_total ELSE 0 END), 0) AS coffee_item_revenue,
         COALESCE(SUM(CASE WHEN oi.business_unit = 'Carwash' THEN oi.line_total ELSE 0 END), 0) AS carwash_item_revenue
       FROM orders o
