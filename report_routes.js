@@ -125,7 +125,7 @@ router.get("/carwash/popular-services", requireManager, async (req, res) => {
       FROM carwash_service_line_items li
       JOIN carwash_services cs ON li.service_ticket_id = cs.id
       JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
-      WHERE cs.status != 'cancelled'
+  WHERE (cs.status = 'Completed' OR cs.status = 'paid')
       GROUP BY cat.id, cat.name, cat.category
       ORDER BY times_ordered DESC
       LIMIT 10;
@@ -175,7 +175,7 @@ router.get("/carwash/services-by-vehicle", requireManager, async (req, res) => {
       JOIN carwash_services cs ON li.service_ticket_id = cs.id
       JOIN carwash_services_catalog cat ON li.catalog_service_id = cat.id
       WHERE li.vehicle_type IS NOT NULL
-        AND cs.status != 'cancelled'
+        AND (cs.status = 'Completed' OR cs.status = 'paid')
       GROUP BY li.vehicle_type, cat.name
       ORDER BY li.vehicle_type, times_ordered DESC;
     `;
@@ -197,7 +197,7 @@ router.get("/carwash/revenue-trends", requireManager, async (req, res) => {
       FROM carwash_service_line_items li
       JOIN carwash_services cs ON li.service_ticket_id = cs.id
       WHERE cs.created_at >= NOW() - INTERVAL '30 days'
-        AND cs.status != 'cancelled'
+        AND (cs.status = 'Completed' OR cs.status = 'paid')
       GROUP BY DATE(cs.created_at)
       ORDER BY date ASC;
     `;
