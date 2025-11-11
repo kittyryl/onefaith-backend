@@ -257,7 +257,7 @@ router.get("/coffee/revenue-trends", requireManager, async (req, res) => {
       JOIN order_items oi ON o.id = oi.order_id
       WHERE oi.business_unit = 'Coffee'
         AND o.created_at >= NOW() - INTERVAL '30 days'
-  AND (o.status = 'Completed' OR o.status = 'paid')
+        AND (o.status = 'Completed' OR o.status = 'paid')
       GROUP BY DATE(o.created_at)
       ORDER BY date ASC;
     `;
